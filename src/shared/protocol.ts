@@ -35,8 +35,10 @@ export interface RoomState {
   updatedAt: number;
   queue: QueueItem[];
   hostId: string;
-  /** Monotonic version, bumped on every state change. */
+  /** Version number: +1 on every committed change. Stores compare-and-swap on it. */
   seq: number;
+  /** Random id fixed when the room is created; `seq` only orders states within one epoch. */
+  epoch: string;
 }
 
 export type SyncStatus =
@@ -86,8 +88,9 @@ export type ServerMessage =
   | { type: 'WELCOME'; clientId: string; serverTime: number; lanAddresses: string[] }
   | { type: 'PONG'; clientTime: number; serverTime: number }
   | { type: 'SYNC_STATE'; state: RoomState }
-  | { type: 'QUEUE_UPDATED'; roomId: string; queue: QueueItem[] }
   | { type: 'PEERS'; roomId: string; peers: Peer[] }
+  /** One peer's telemetry changed; cheaper than re-sending the whole list. */
+  | { type: 'PEER_UPDATE'; roomId: string; peer: Peer }
   | { type: 'ERROR'; message: string };
 
 // ---------------------------------------------------------------------------

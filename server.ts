@@ -7,12 +7,12 @@
  */
 import { createServer } from 'node:http';
 import QRCode from 'qrcode';
-import { WebSocketServer, type WebSocket } from 'ws';
-import type { ServerMessage } from './src/shared/protocol';
+import { WebSocketServer } from 'ws';
+import { SyncHub } from './src/server/hub';
 import { getLanAddresses } from './src/server/net';
-import { RoomManager, newId } from './src/server/rooms';
+import { attachSocket } from './src/server/socket';
+import { MemoryStore } from './src/server/store/memory';
 import { resolveTitle } from './src/server/titles';
-import { parseClientMessage } from './src/server/validate';
 
 const dev = process.argv.includes('--dev');
 // Next and React choose dev/prod builds from NODE_ENV, so pin it before loading them.
@@ -22,10 +22,9 @@ const { default: next } = await import('next');
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
-/** Monotonic, high-resolution server clock (ms). Immune to NTP steps mid-session. */
-const now = () => performance.timeOrigin + performance.now();
-
-const rooms = new RoomManager({ now, resolveTitle });
+// One process holds every socket, so rooms can live in memory here.
+const hub = new SyncHub({ store: new MemoryStore(), resolveTitle });
+hub.start();
 
 // ---------------------------------------------------------------------------
 // HTTP: Next.js handles everything except the health probe
@@ -34,7 +33,7 @@ const rooms = new RoomManager({ now, resolveTitle });
 const server = createServer((req, res) => {
   if (req.url === '/healthz') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-    res.end(JSON.stringify({ ok: true, uptime: Math.round(process.uptime()), ...rooms.stats() }));
+    res.end(JSON.stringify({ ok: true, uptime: Math.round(process.uptime()), ...hub.stats() }));
     return;
   }
   void handle(req, res);
@@ -55,63 +54,8 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024, perMess
 // with no matching route alone, so the two never fight over a socket.
 server.on('upgrade', (req, socket, head) => {
   if (req.url?.split('?')[0] !== '/ws') return;
-  wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  wss.handleUpgrade(req, socket, head, (ws) => attachSocket(hub, ws, { lanAddresses: getLanAddresses }));
 });
-
-const alive = new WeakMap<WebSocket, boolean>();
-
-wss.on('connection', (ws: WebSocket) => {
-  const id = newId();
-  alive.set(ws, true);
-  ws.on('pong', () => alive.set(ws, true));
-
-  rooms.connect({
-    id,
-    send(data) {
-      if (ws.readyState === ws.OPEN) ws.send(data);
-    },
-  });
-
-  const welcome: ServerMessage = { type: 'WELCOME', clientId: id, serverTime: now(), lanAddresses: getLanAddresses() };
-  ws.send(JSON.stringify(welcome));
-
-  // Crude flood guard: 60 frames/sec sustained is far beyond normal use.
-  let budget = 120;
-  const refill = setInterval(() => (budget = Math.min(120, budget + 60)), 1000);
-
-  ws.on('message', (data, isBinary) => {
-    const receivedAt = now(); // stamp before any parsing work so PONG is as tight as possible
-    if (isBinary || --budget < 0) return;
-    const msg = parseClientMessage(data.toString());
-    if (!msg) return;
-    if (msg.type === 'PING') {
-      ws.send(JSON.stringify({ type: 'PONG', clientTime: msg.clientTime, serverTime: receivedAt } satisfies ServerMessage));
-      return;
-    }
-    rooms.handle(id, msg);
-  });
-
-  ws.on('close', () => {
-    clearInterval(refill);
-    rooms.disconnect(id);
-  });
-  ws.on('error', () => ws.terminate());
-});
-
-// Protocol-level heartbeat: drop sockets that stop answering (phones that slept, dead NAT).
-const heartbeat = setInterval(() => {
-  for (const ws of wss.clients) {
-    if (!alive.get(ws)) {
-      ws.terminate();
-      continue;
-    }
-    alive.set(ws, false);
-    ws.ping();
-  }
-}, 15_000);
-
-const housekeeping = setInterval(() => rooms.flushPeers(), 1000);
-const sweeper = setInterval(() => rooms.sweep(), 60_000);
 
 // ---------------------------------------------------------------------------
 // Boot
@@ -140,9 +84,7 @@ server.listen(PORT, HOST, async () => {
 });
 
 function shutdown() {
-  clearInterval(heartbeat);
-  clearInterval(housekeeping);
-  clearInterval(sweeper);
+  hub.stop();
   for (const ws of wss.clients) ws.close(1001, 'server shutting down');
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 2000).unref();

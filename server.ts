@@ -21,6 +21,8 @@ const { default: next } = await import('next');
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '0.0.0.0';
+/** Same path the Vercel Function serves (src/app/api/ws/route.ts), so the client never cares where it runs. */
+const SYNC_PATH = '/api/ws';
 
 // One process holds every socket, so rooms can live in memory here.
 const hub = new SyncHub({ store: new MemoryStore(), resolveTitle });
@@ -39,22 +41,31 @@ const server = createServer((req, res) => {
   void handle(req, res);
 });
 
-const app = next({ dev, hostname: 'localhost', port: PORT, httpServer: server });
+// On the first request Next attaches its own `upgrade` listener (the one that serves dev
+// HMR) to whatever `httpServer` it was given. On the real server it would also end our
+// /api/ws sockets, because a route matches that path. So Next gets a decoy server that
+// never listens, and we forward only Next's own paths to it.
+// (`app.getUpgradeHandler()` is not a substitute: it skips the HMR handling.)
+const nextUpgrades = createServer();
+const app = next({ dev, hostname: 'localhost', port: PORT, httpServer: nextUpgrades });
 const handle = app.getRequestHandler();
 await app.prepare();
 
 // ---------------------------------------------------------------------------
-// WebSocket sync channel on /ws
+// WebSocket sync channel
 // ---------------------------------------------------------------------------
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024, perMessageDeflate: false });
 
-// We only claim /ws. Next attaches its own `upgrade` listener to `httpServer` on the
-// first request and serves HMR (/_next/hmr) from it; it deliberately leaves paths
-// with no matching route alone, so the two never fight over a socket.
 server.on('upgrade', (req, socket, head) => {
-  if (req.url?.split('?')[0] !== '/ws') return;
-  wss.handleUpgrade(req, socket, head, (ws) => attachSocket(hub, ws, { lanAddresses: getLanAddresses }));
+  const path = req.url?.split('?')[0] ?? '';
+  if (path === SYNC_PATH) {
+    wss.handleUpgrade(req, socket, head, (ws) => attachSocket(hub, ws, { lanAddresses: getLanAddresses }));
+  } else if (path.startsWith('/_next/') && nextUpgrades.listenerCount('upgrade') > 0) {
+    nextUpgrades.emit('upgrade', req, socket, head); // dev HMR, handled by Next's own listener
+  } else {
+    socket.destroy(); // nothing else speaks WebSocket here; don't leave it hanging
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -68,7 +79,7 @@ const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 server.listen(PORT, HOST, async () => {
   const [best, ...others] = getLanAddresses();
   console.log('');
-  console.log(bold(`  ◉ Sub50 ${dev ? 'dev' : 'production'} server on ${HOST}:${PORT}`) + dim('  (sync socket: /ws)'));
+  console.log(bold(`  ◉ Sub50 ${dev ? 'dev' : 'production'} server on ${HOST}:${PORT}`) + dim(`  (sync socket: ${SYNC_PATH})`));
   console.log(`  Desktop:  ${green(`http://localhost:${PORT}`)}`);
   if (best) {
     console.log(`  Phone:    ${bold(green(`http://${best}:${PORT}`))}`);

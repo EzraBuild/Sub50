@@ -23,3 +23,20 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build -t sub50 .
+      - name: Boot and probe
+        run: |
+          docker run -d --name sub50 -p 3001:3001 sub50
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:3001/healthz && break; sleep 1; done
+          curl -fs http://127.0.0.1:3001/healthz
+          curl -fs "http://127.0.0.1:3001/?room=ci-check" | grep -q '<div id="root">'
+      - name: Container logs
+        if: always()
+        run: docker logs sub50 || true

@@ -44,12 +44,12 @@ export function UrlBar({ disabled, onPlayNow, onQueue }: Props) {
           placeholder="Paste a YouTube link: watch, youtu.be, shorts, music…"
           aria-label="YouTube URL"
           aria-invalid={invalid}
-          className={`h-11 w-full rounded-lg border bg-zinc-900 px-3.5 font-mono text-[13px] text-zinc-100 placeholder:font-sans placeholder:text-zinc-600 focus:outline-none ${
-            invalid ? 'border-rose-500/70' : 'border-line focus:border-zinc-600'
+          className={`h-11 w-full rounded-lg border bg-sunken px-3.5 font-mono text-[13px] text-ink placeholder:font-sans placeholder:text-faint focus:outline-none ${
+            invalid ? 'border-bad/70' : 'border-line focus:border-line-strong'
           }`}
         />
         {invalid && (
-          <p className="absolute -bottom-5 left-1 text-[11px] text-rose-400">That doesn&apos;t look like a YouTube link.</p>
+          <p className="absolute -bottom-5 left-1 text-[11px] text-bad">That doesn&apos;t look like a YouTube link.</p>
         )}
       </div>
       <div className={`flex gap-2 ${invalid ? 'mt-4 sm:mt-0' : ''}`}>

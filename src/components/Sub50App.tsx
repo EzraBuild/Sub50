@@ -128,7 +128,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
           </div>
         </div>
 
-        <footer className="pt-2 pb-6 text-center font-mono text-[10px] tracking-wide text-zinc-700">
+        <footer className="pt-2 pb-6 text-center font-mono text-[10px] tracking-wide text-faint">
           clock offset {Math.round(client.clock.offset)}ms · playback rate {sync.telemetry.rate.toFixed(2)}× · {connection}
         </footer>
       </main>

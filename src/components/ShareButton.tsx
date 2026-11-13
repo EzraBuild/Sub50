@@ -46,7 +46,7 @@ export function ShareButton({ url }: { url: string }) {
   return (
     <div className="relative flex items-center" ref={popRef}>
       <button type="button" onClick={copy} className="btn rounded-r-none border-r-0 px-3" title={url}>
-        {copied ? <CheckIcon className="text-emerald-400" /> : <LinkIcon />}
+        {copied ? <CheckIcon className="text-lock" /> : <LinkIcon />}
         <span className="hidden md:inline">{copied ? 'Copied' : 'Copy LAN Link'}</span>
       </button>
       <button
@@ -60,14 +60,14 @@ export function ShareButton({ url }: { url: string }) {
       </button>
 
       {open && (
-        <div className="card absolute top-12 right-0 z-30 w-64 p-4 shadow-2xl shadow-black/60">
+        <div className="card absolute top-12 right-0 z-30 w-64 p-4 shadow-2xl shadow-shade">
           <p className="label mb-3">Scan to join</p>
           {svg ? (
             <div className="overflow-hidden rounded-lg [&>svg]:block [&>svg]:h-auto [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: svg }} />
           ) : (
-            <div className="aspect-square rounded-lg bg-zinc-800" />
+            <div className="aspect-square rounded-lg bg-line" />
           )}
-          <p className="mt-3 font-mono text-[11px] break-all text-zinc-400 select-all">{url}</p>
+          <p className="mt-3 font-mono text-[11px] break-all text-muted select-all">{url}</p>
         </div>
       )}
     </div>

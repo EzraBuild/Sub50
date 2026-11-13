@@ -39,11 +39,11 @@ export function AudioDeck(props: Props) {
 
       {!hasTrack && (
         <div className="flex flex-col items-center justify-center gap-3 border-b border-line px-6 py-14 text-center">
-          <span className="flex size-12 items-center justify-center rounded-full border border-line text-zinc-500">
+          <span className="flex size-12 items-center justify-center rounded-full border border-line text-muted">
             <HeadphonesIcon size={22} />
           </span>
-          <p className="text-sm text-zinc-300">Nothing playing yet</p>
-          <p className="max-w-xs text-xs text-zinc-500">Paste a YouTube link above. Everyone in the room hears it in lockstep on their own device.</p>
+          <p className="text-sm text-ink-2">Nothing playing yet</p>
+          <p className="max-w-xs text-xs text-muted">Paste a YouTube link above. Everyone in the room hears it in lockstep on their own device.</p>
         </div>
       )}
 
@@ -51,10 +51,10 @@ export function AudioDeck(props: Props) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="label mb-1">{hasTrack ? (playing ? 'Now playing' : 'Paused') : 'Deck idle'}</p>
-            <h2 className="truncate text-[15px] font-medium text-zinc-100" title={room?.title ?? undefined}>
+            <h2 className="truncate text-[15px] font-medium text-ink" title={room?.title ?? undefined}>
               {hasTrack ? room?.title || 'Loading title…' : '—'}
             </h2>
-            {hasTrack && <p className="mt-0.5 font-mono text-[11px] text-zinc-600">{room?.videoId}</p>}
+            {hasTrack && <p className="mt-0.5 font-mono text-[11px] text-faint">{room?.videoId}</p>}
           </div>
           <button
             type="button"
@@ -69,7 +69,7 @@ export function AudioDeck(props: Props) {
           </button>
         </div>
 
-        {error && <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</p>}
+        {error && <p className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-xs text-bad">{error}</p>}
 
         <Scrubber
           duration={duration}
@@ -91,7 +91,7 @@ export function AudioDeck(props: Props) {
             onClick={props.onTogglePlay}
             disabled={!canControl}
             aria-label={playing ? 'Pause for everyone' : 'Play for everyone'}
-            className="flex size-14 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 shadow-lg shadow-black/40 transition hover:bg-white active:scale-95 disabled:opacity-40"
+            className="flex size-14 items-center justify-center rounded-full bg-ink text-canvas shadow-lg shadow-shade transition hover:bg-ink-2 active:scale-95 disabled:opacity-40"
           >
             {playing ? <PauseIcon size={22} /> : <PlayIcon size={22} className="translate-x-px" />}
           </button>

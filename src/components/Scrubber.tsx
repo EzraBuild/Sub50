@@ -104,7 +104,7 @@ export function Scrubber({ duration, disabled, getPosition, getLoadedFraction, o
   };
 
   return (
-    <div className="flex items-center gap-3 font-mono text-[11px] text-zinc-400 tabular-nums">
+    <div className="flex items-center gap-3 font-mono text-[11px] text-muted tabular-nums">
       <span ref={timeRef} className="w-11 text-right">
         0:00
       </span>
@@ -123,13 +123,13 @@ export function Scrubber({ duration, disabled, getPosition, getLoadedFraction, o
         onKeyDown={onKeyDown}
         className={`group relative flex h-6 flex-1 touch-none items-center ${disabled ? 'opacity-40' : 'cursor-pointer'}`}
       >
-        <div className="relative h-1 w-full overflow-hidden rounded-full bg-zinc-800">
-          <div ref={bufRef} className="absolute inset-y-0 left-0 bg-zinc-700/70" />
-          <div ref={fillRef} className="absolute inset-y-0 left-0 bg-zinc-100" />
+        <div className="relative h-1 w-full overflow-hidden rounded-full bg-line">
+          <div ref={bufRef} className="absolute inset-y-0 left-0 bg-line-strong" />
+          <div ref={fillRef} className="absolute inset-y-0 left-0 bg-ink" />
         </div>
         <div
           ref={thumbRef}
-          className={`absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow transition-transform ${
+          className={`absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink shadow transition-transform ${
             dragging ? 'scale-125' : 'scale-0 group-hover:scale-100 group-focus-visible:scale-100'
           }`}
         />

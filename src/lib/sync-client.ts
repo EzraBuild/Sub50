@@ -18,7 +18,7 @@ export function defaultSocketUrl(): string {
   const override = process.env.NEXT_PUBLIC_WS_URL;
   if (override) return override;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${location.host}/ws`;
+  return `${proto}//${location.host}/api/ws`;
 }
 
 /**
@@ -34,6 +34,7 @@ export class SyncClient {
   private ws: WebSocket | null = null;
   private running = false;
   private attempt = 0;
+  private openedAt = 0;
   private join: { roomId: string; username: string; sessionId: string } | null = null;
   private joined = false;
   private timers = new Set<ReturnType<typeof setTimeout>>();
@@ -105,6 +106,7 @@ export class SyncClient {
 
     ws.onopen = () => {
       this.attempt = 0;
+      this.openedAt = Date.now();
       this.joined = false;
       this.clock.reset();
       this.setStatus('open');
@@ -137,7 +139,13 @@ export class SyncClient {
       this.joined = false;
       this.setStatus('closed');
       if (!this.running) return;
-      const delay = Math.min(5000, 400 * 2 ** this.attempt++) * (0.75 + Math.random() * 0.5);
+      // A socket that lived a while and then closed is the host rotating it (Vercel
+      // Functions end at their max duration): come straight back. Otherwise back off.
+      const rotated = this.openedAt > 0 && Date.now() - this.openedAt > 30_000;
+      this.openedAt = 0;
+      if (rotated) this.attempt = 0;
+      const base = rotated ? 50 : 400;
+      const delay = Math.min(5000, base * 2 ** this.attempt++) * (0.75 + Math.random() * 0.5);
       this.later(() => this.running && this.connect(), delay);
     };
 

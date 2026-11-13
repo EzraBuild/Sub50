@@ -9,13 +9,15 @@
   },
   "scripts": {
     "dev": "tsx watch --clear-screen=false server.ts --dev",
-    "build": "next build && esbuild server.ts --bundle --platform=node --target=node22 --format=esm --packages=external --sourcemap --outfile=dist/server.js",
+    "build": "next build",
+    "build:server": "esbuild server.ts --bundle --platform=node --target=node22 --format=esm --packages=external --sourcemap --outfile=dist/server.js",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@upstash/redis": "^1.41.0",
+    "@vercel/functions": "^3.11.2",
     "geist": "^1.9.2",
     "next": "^16.4.6",
     "qrcode": "^1.5.4",
@@ -31,6 +33,7 @@
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.18.2",
     "@types/youtube": "^0.3.0",
+    "@vercel/config": "^0.14.1",
     "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.5",
     "tsx": "^4.23.15",

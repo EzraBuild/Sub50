@@ -26,6 +26,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm run build:server
 
   docker:
     runs-on: ubuntu-latest
@@ -44,7 +45,7 @@ jobs:
           curl -fs "http://127.0.0.1:3000/?room=ci-check" | grep -q '<title>Sub50</title>'
           # the sync socket answers the upgrade on the same port
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
-            -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' http://127.0.0.1:3000/ws || true)
+            -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' http://127.0.0.1:3000/api/ws || true)
           test "$code" = 101
       - name: Container logs
         if: always()

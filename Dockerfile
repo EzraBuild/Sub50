@@ -6,7 +6,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
-RUN npm run build && rm -rf .next/cache
+RUN npm run build && npm run build:server && rm -rf .next/cache
 
 FROM node:24-alpine
 WORKDIR /app

@@ -4,6 +4,8 @@ Paste a YouTube link, and everyone in the room hears it on their own device and 
 
 No audio goes through the server. Every device runs its own YouTube IFrame player; the server only keeps one authoritative timeline and each client steers its player onto it.
 
+**Stack:** Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · `ws`. A small custom server (`server.ts`) runs Next.js and the WebSocket sync channel in **one process on one port**.
+
 ## Quick start
 
 Requires Node 22.12+ (Node 24 recommended).
@@ -13,15 +15,15 @@ npm install
 npm run dev
 ```
 
-`npm run dev` starts the sync server (`:3001`) and the Vite client (`:5173`), then prints the URL for phones plus a QR code:
+`npm run dev` starts Next.js with hot reload and the `/ws` sync socket on port 3000, then prints the URL for phones plus a QR code:
 
 ```text
-◉ Sub50 is live
-Desktop:  http://localhost:5173
-Phone:    http://192.168.1.23:5173  (Wi-Fi)
+◉ Sub50 dev server on 0.0.0.0:3000  (sync socket: /ws)
+Desktop:  http://localhost:3000
+Phone:    http://192.168.1.23:3000
 ```
 
-1. Open `http://localhost:5173` on your computer. You get a fresh room (`?room=abc-xyz`).
+1. Open `http://localhost:3000` on your computer. The server redirects you to a fresh room (`/?room=abc-xyz`).
 2. Click **Copy LAN Link** (or the QR button) in the header and open it on your phone. On `localhost` the link is rewritten to your LAN IP automatically.
 3. Tap **Tap to Enter Sub50** on each device. This unlocks audio; mobile browsers refuse unmuted playback that doesn't start inside a tap.
 4. Paste a link and hit **Play Now** or **+ Queue**.
@@ -76,37 +78,38 @@ Right after a load, seek or resume there is no audio continuity to protect, so t
 
 | command | does |
 |---|---|
-| `npm run dev` | server + client with hot reload, prints LAN URL + QR |
+| `npm run dev` | `tsx watch server.ts --dev`: Next.js + HMR + `/ws` on :3000, prints LAN URL + QR |
 | `npm test` | unit tests (URL parser, room engine, clock sync, drift bands) |
-| `npm run typecheck` | `tsc --noEmit` for server and client |
-| `npm run build` | client → `client/dist`, server → `server/dist/index.js` |
-| `npm start` | production server: serves `client/dist` and `/ws` on one port |
+| `npm run typecheck` | `tsc --noEmit` over the whole project |
+| `npm run build` | `next build` (type-checks too) + bundles `server.ts` → `dist/server.js` |
+| `npm start` | production: `node dist/server.js` serves Next.js and `/ws` on `$PORT` |
+
+In dev, phones load the site by LAN IP, so `next.config.ts` adds this machine's LAN addresses to `allowedDevOrigins`. Without that, Next blocks the HMR and dev chunks for those origins.
 
 ## Deploying
 
-Production is one Node process: it serves the built client and the WebSocket on `$PORT`, with a health check at `/healthz`.
+Production is one Node process: Next.js plus the WebSocket on `$PORT`, with a health check at `/healthz`.
 
 ```bash
 npm run build && PORT=8080 npm start     # or:
-docker build -t sub50 . && docker run -p 3001:3001 sub50
+docker build -t sub50 . && docker run -p 3000:3000 sub50
 ```
 
-Room state lives **in memory**, so run exactly **one instance**. Two replicas would split rooms between them, and a restart clears all rooms (clients reconnect and re-join automatically, but queues are lost).
+Room state lives **in memory**, and every peer in a room must hold a socket to the same process. So run exactly **one instance** on a host that keeps a long-lived Node process. Two replicas would split rooms between them, and a restart clears all rooms (clients reconnect and re-join automatically, but queues are lost).
+
+That's also why this isn't a Vercel deploy: a custom server can't run there, and functions don't share in-memory rooms. Use one of these instead:
 
 - **Railway**: deploy the repo; it detects the Dockerfile, or set build `npm run build` and start `npm start`. `PORT` is injected.
 - **Render**: Web Service, build `npm ci && npm run build`, start `npm start`, health check path `/healthz`. WebSockets work on web services.
-- **Fly.io**: `fly launch` (uses the Dockerfile; internal port `3001`), then `fly scale count 1`. In `fly.toml` set `auto_stop_machines = "off"` and `min_machines_running = 1` so idle rooms survive.
+- **Fly.io**: `fly launch` (uses the Dockerfile; internal port `3000`), then `fly scale count 1`. In `fly.toml` set `auto_stop_machines = "off"` and `min_machines_running = 1` so idle rooms survive.
 
-Behind HTTPS the client switches to `wss://` automatically. To host the client separately from the server, build it with `VITE_WS_URL=wss://your-server/ws`.
+Behind HTTPS the client switches to `wss://` automatically. To point the client at a sync server on another host, build with `NEXT_PUBLIC_WS_URL=wss://your-server/ws`.
 
 | env | default | used by |
 |---|---|---|
-| `PORT` | `3001` | server |
+| `PORT` | `3000` | server |
 | `HOST` | `0.0.0.0` | server bind address |
-| `CLIENT_DIST` | `client/dist` | server static files |
-| `VITE_WS_URL` | same origin `/ws` | client build |
-| `SUB50_SERVER` | `http://127.0.0.1:3001` | Vite dev proxy target |
-| `CLIENT_PORT` | `5173` | LAN banner |
+| `NEXT_PUBLIC_WS_URL` | same origin `/ws` | client build (inlined by Next) |
 
 ## Known limits
 
@@ -118,8 +121,15 @@ Behind HTTPS the client switches to `wss://` automatically. To host the client s
 ## Layout
 
 ```text
-shared/   protocol types, sync tunables, YouTube URL parser
-server/   Express + ws: RoomManager, validation, PING/PONG, static hosting
-client/   React + Tailwind: useYouTubeSync drift engine, clock sync, UI
-scripts/  LAN banner for `npm run dev`
+server.ts            custom server: Next.js handler, /ws sync socket, /healthz, LAN banner
+next.config.ts       allowedDevOrigins (LAN IPs), Turbopack root
+src/
+├── app/             App Router: layout (Geist, viewport), page (server-side ?room= redirect), globals.css
+├── components/      ClientShell (ssr: false) → Sub50App, deck, scrubber, queue, gate, telemetry pill
+├── hooks/           useYouTubeSync (drift engine), useRoom (socket → React state)
+├── lib/             clock sync, reconnecting socket client, drift math, YouTube API loader
+├── server/          RoomManager, message validation, oEmbed titles, LAN detection
+└── shared/          wire protocol + sync tunables, YouTube URL parser, room ids
 ```
+
+The player is a client component loaded with `ssr: false`, because it needs the YouTube IFrame API, the autoplay unlock and `localStorage`. The page itself is a server component that validates `?room=` and redirects to a fresh room before any JavaScript runs.

@@ -1,26 +1,38 @@
 {
   "name": "sub50",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Real-time YouTube sync player with sub-50ms drift.",
   "type": "module",
-  "workspaces": [
-    "server",
-    "client"
-  ],
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "concurrently --kill-others-on-fail --names server,client,lan --prefix-colors magenta,cyan,green \"npm run dev --workspace server\" \"npm run dev --workspace client\" \"node scripts/lan-banner.mjs\"",
-    "build": "npm run build --workspace client && npm run build --workspace server",
-    "start": "node server/dist/index.js",
-    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace client",
-    "test": "tsx --test \"shared/**/*.test.ts\" \"server/src/**/*.test.ts\" \"client/src/**/*.test.ts\""
+    "dev": "tsx watch --clear-screen=false server.ts --dev",
+    "build": "next build && esbuild server.ts --bundle --platform=node --target=node22 --format=esm --packages=external --sourcemap --outfile=dist/server.js",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "geist": "^1.9.2",
+    "next": "^16.4.6",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "ws": "^8.23.0"
   },
   "devDependencies": {
-    "concurrently": "^10.0.7",
-    "qrcode": "^1.5.4",
-    "tsx": "^4.23.15"
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/node": "^24.0.0",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.2",
+    "@types/youtube": "^0.3.0",
+    "esbuild": "^0.28.2",
+    "tailwindcss": "^4.3.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
   }
 }

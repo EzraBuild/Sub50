@@ -9,6 +9,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NEXT_TELEMETRY_DISABLED: 1
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -33,10 +36,16 @@ jobs:
         run: docker build -t sub50 .
       - name: Boot and probe
         run: |
-          docker run -d --name sub50 -p 3001:3001 sub50
-          for i in $(seq 1 30); do curl -fs http://127.0.0.1:3001/healthz && break; sleep 1; done
-          curl -fs http://127.0.0.1:3001/healthz
-          curl -fs "http://127.0.0.1:3001/?room=ci-check" | grep -q '<div id="root">'
+          docker run -d --name sub50 -p 3000:3000 sub50
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:3000/healthz && break; sleep 1; done
+          curl -fs http://127.0.0.1:3000/healthz
+          # no ?room= → server-side redirect to a fresh room
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/)" = 307
+          curl -fs "http://127.0.0.1:3000/?room=ci-check" | grep -q '<title>Sub50</title>'
+          # the sync socket answers the upgrade on the same port
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+            -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' http://127.0.0.1:3000/ws || true)
+          test "$code" = 101
       - name: Container logs
         if: always()
         run: docker logs sub50 || true

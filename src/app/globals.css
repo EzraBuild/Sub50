@@ -120,8 +120,60 @@
     @apply inline-flex size-10 items-center justify-center rounded-lg border border-line bg-sunken text-ink-2 transition-colors select-none hover:border-line-strong hover:bg-line hover:text-ink disabled:opacity-40;
   }
   .label {
-    @apply font-mono text-[11px] tracking-[0.14em] text-muted uppercase;
+    @apply font-mono text-[11px] tracking-[0.08em] text-muted uppercase;
   }
+  /* Ink chip: tiny inverted mono badge. */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-[5px] bg-ink px-1.5 py-px font-mono text-[10.5px] tracking-[0.06em] text-canvas uppercase;
+  }
+  /* A row of bordered cells, like a technical nav strip. */
+  .cell {
+    @apply flex h-full items-center gap-2 border-l border-line px-3 sm:px-4;
+  }
+}
+
+@layer utilities {
+  /* Dotted grid paper. */
+  .dot-grid {
+    background-image: radial-gradient(circle at 1px 1px, var(--line-strong) 1px, transparent 0);
+    background-size: 18px 18px;
+  }
+  /* Fade an element's edges out (used on the dotted bands). */
+  .fade-edges {
+    mask-image: radial-gradient(120% 90% at 50% 0%, #000 45%, transparent 85%);
+  }
+  .rise {
+    animation: rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Audio-only equalizer bars. */
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.eq-bar {
+  transform-origin: bottom;
+  animation: eq 1.1s ease-in-out infinite;
+}
+.eq-paused .eq-bar {
+  animation-play-state: paused;
 }
 
 /* YouTube swaps our mount node for its iframe; make it fill the deck. */
@@ -166,7 +218,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .lock-glow,
-  .ring-out {
+  .ring-out,
+  .rise,
+  .eq-bar {
     animation: none;
   }
   body {

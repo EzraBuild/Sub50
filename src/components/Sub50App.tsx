@@ -5,6 +5,7 @@ import { useRoom } from '../hooks/useRoom';
 import { useYouTubeSync } from '../hooks/useYouTubeSync';
 import { loadName, saveName, shareUrl } from '../lib/identity';
 import { AudioDeck } from './AudioDeck';
+import { Cross } from './Frame';
 import { BlockedOverlay, Gate, ToastView } from './Gate';
 import { Header } from './Header';
 import { Peers } from './Peers';
@@ -88,36 +89,55 @@ export default function Sub50App({ roomId }: { roomId: string }) {
 
   return (
     <div className="min-h-dvh pb-[env(safe-area-inset-bottom)]">
-      <Header
-        roomId={roomId}
-        status={status}
-        driftMs={sync.telemetry.driftMs}
-        rttMs={rttMs}
-        peerCount={peers.length}
-        shareUrl={link}
-      />
+      <Header roomId={roomId} status={status} driftMs={sync.telemetry.driftMs} rttMs={rttMs} peerCount={peers.length} shareUrl={link} />
 
-      <main className="mx-auto max-w-6xl space-y-5 px-4 py-5 sm:px-6 sm:py-6">
-        <UrlBar disabled={!connected} onPlayNow={(url) => send(actions.changeVideo(url))} onQueue={(url) => send(actions.queueAdd(url))} />
+      <div className="relative mx-auto max-w-[1200px] border-line min-[1201px]:border-x">
+        {/* Hero band: dotted paper, one line of intent, the link input. */}
+        <section className="relative border-b border-line">
+          <div aria-hidden className="dot-grid fade-edges pointer-events-none absolute inset-0 opacity-80" />
+          <div className="relative px-4 pt-9 pb-8 sm:px-8 sm:pt-14 sm:pb-11">
+            <p className="label rise flex flex-wrap items-center gap-2">
+              <span className="chip">
+                <span className={`size-1.5 rounded-full ${connected ? 'bg-lock' : 'bg-bad'}`} />
+                {connected ? 'live' : 'offline'}
+              </span>
+              room {roomId} · {peers.length} listening
+            </p>
+            <h1
+              className="rise mt-4 max-w-3xl text-[32px] leading-[1.08] font-semibold tracking-[-0.035em] text-ink sm:text-[46px]"
+              style={{ animationDelay: '60ms' }}
+            >
+              Listen in lockstep.
+              <span className="text-faint"> Every device, one beat, under 50ms.</span>
+            </h1>
+            <div className="rise mt-7 max-w-3xl" style={{ animationDelay: '120ms' }}>
+              <UrlBar disabled={!connected} onPlayNow={(url) => send(actions.changeVideo(url))} onQueue={(url) => send(actions.queueAdd(url))} />
+            </div>
+          </div>
+          <Cross at="bl" className="hidden min-[1201px]:block" />
+          <Cross at="br" className="hidden min-[1201px]:block" />
+        </section>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <AudioDeck
-            hostRef={sync.hostRef}
-            room={state}
-            duration={sync.duration}
-            error={sync.error}
-            showVideo={showVideo}
-            connected={connected}
-            getPosition={sync.getPosition}
-            getLoadedFraction={sync.getLoadedFraction}
-            onToggleVideo={toggleVideo}
-            onTogglePlay={togglePlay}
-            onSeek={(t) => send(actions.seek(t))}
-            onResync={sync.resync}
-            onNext={() => state?.queue[0] && send(actions.queuePlay(state.queue[0].id))}
-          />
-
-          <div className="space-y-5">
+        <main className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="rise min-w-0 border-line lg:border-r" style={{ animationDelay: '160ms' }}>
+            <AudioDeck
+              hostRef={sync.hostRef}
+              room={state}
+              duration={sync.duration}
+              error={sync.error}
+              showVideo={showVideo}
+              connected={connected}
+              getPosition={sync.getPosition}
+              getLoadedFraction={sync.getLoadedFraction}
+              onToggleVideo={toggleVideo}
+              onTogglePlay={togglePlay}
+              onSeek={(t) => send(actions.seek(t))}
+              onResync={sync.resync}
+              onNext={() => state?.queue[0] && send(actions.queuePlay(state.queue[0].id))}
+            />
+          </div>
+          <aside className="rise relative min-w-0 border-t border-line lg:border-t-0" style={{ animationDelay: '220ms' }}>
+            <Cross at="tl" className="hidden lg:block" />
             <Queue
               queue={state?.queue ?? []}
               disabled={!connected}
@@ -125,13 +145,18 @@ export default function Sub50App({ roomId }: { roomId: string }) {
               onRemove={(id) => send(actions.queueRemove(id))}
             />
             <Peers peers={peers} selfId={selfId} hostId={state?.hostId ?? null} />
-          </div>
-        </div>
+          </aside>
+        </main>
 
-        <footer className="pt-2 pb-6 text-center font-mono text-[10px] tracking-wide text-faint">
-          clock offset {Math.round(client.clock.offset)}ms · playback rate {sync.telemetry.rate.toFixed(2)}× · {connection}
+        <footer className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line px-4 py-3 font-mono text-[10.5px] tracking-[0.04em] text-faint sm:px-5">
+          <Cross at="tl" className="hidden min-[1201px]:block" />
+          <Cross at="tr" className="hidden min-[1201px]:block" />
+          <span>
+            clock {Math.round(client.clock.offset)}ms · rate {sync.telemetry.rate.toFixed(2)}× · {connection}
+          </span>
+          <span>sub50 · youtube in lockstep</span>
         </footer>
-      </main>
+      </div>
 
       {!entered && <Gate roomId={roomId} name={name} connected={connected} onEnter={enter} />}
       {entered && sync.blocked && <BlockedOverlay onTap={sync.unlock} />}

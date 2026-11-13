@@ -13,32 +13,40 @@ interface Props {
   shareUrl: string;
 }
 
+/** A strip of bordered cells, continuing the page frame's side rules. */
 export function Header({ roomId, status, driftMs, rttMs, peerCount, shareUrl }: Props) {
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
-        <a href="/" className="flex items-center gap-2" aria-label="Sub50 home (new room)">
-          <LogoMark />
-          <span className="text-[17px] font-semibold tracking-tight text-ink">
+    <header className="sticky top-0 z-30 border-b border-line bg-canvas/80 backdrop-blur-md">
+      <div className="mx-auto flex h-14 max-w-[1200px] items-stretch border-line min-[1201px]:border-x">
+        <a href="/" className="flex items-center gap-2.5 px-4 sm:px-5" aria-label="Sub50 home (new room)">
+          <LogoMark size={20} />
+          <span className="text-[15px] font-semibold tracking-tight text-ink">
             Sub<span className="text-lock">50</span>
           </span>
         </a>
-        <span className="hidden rounded-md border border-line px-2 py-0.5 font-mono text-[11px] text-muted sm:inline">
-          {roomId}
-        </span>
+        <div className="cell hidden md:flex">
+          <span className="label">room</span>
+          <span className="font-mono text-[12px] text-ink-2">{roomId}</span>
+        </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          <TelemetryPill status={status} driftMs={driftMs} rttMs={rttMs} />
+        <div className="ml-auto flex items-stretch">
+          <div className="cell">
+            <TelemetryPill status={status} driftMs={driftMs} rttMs={rttMs} />
+          </div>
           <a
-            href="#peers"
-            className="flex h-8 items-center gap-1.5 rounded-full border border-line px-2.5 font-mono text-[11px] text-ink-2 hover:border-line-strong"
-            title={`${peerCount} connected`}
+            href="#listeners"
+            className="cell hidden font-mono text-[12px] text-ink-2 transition-colors hover:bg-sunken sm:flex"
+            title={`${peerCount} listening`}
           >
-            <UsersIcon size={14} />
+            <UsersIcon size={15} />
             <span className="tabular-nums">{peerCount}</span>
           </a>
-          <ThemeToggle />
-          <ShareButton url={shareUrl} />
+          <div className="cell px-1.5 sm:px-2">
+            <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-sunken hover:text-ink" />
+          </div>
+          <div className="cell px-1.5 sm:px-2">
+            <ShareButton url={shareUrl} />
+          </div>
         </div>
       </div>
     </header>

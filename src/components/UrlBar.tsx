@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { parseYouTubeId } from '../shared/youtube';
-import { PlayIcon, PlusIcon } from './icons';
+import { LinkIcon, PlayIcon, PlusIcon } from './icons';
 
 interface Props {
   disabled: boolean;
@@ -31,6 +31,7 @@ export function UrlBar({ disabled, onPlayNow, onQueue }: Props) {
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-2 sm:flex-row">
       <div className="relative flex-1">
+        <LinkIcon size={16} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-faint" />
         <input
           type="url"
           inputMode="url"
@@ -41,24 +42,22 @@ export function UrlBar({ disabled, onPlayNow, onQueue }: Props) {
             setValue(e.target.value);
             if (invalid) setInvalid(false);
           }}
-          placeholder="Paste a YouTube link: watch, youtu.be, shorts, music…"
+          placeholder="youtube.com/watch?v=… · youtu.be/… · shorts · music"
           aria-label="YouTube URL"
           aria-invalid={invalid}
-          className={`h-11 w-full rounded-lg border bg-sunken px-3.5 font-mono text-[13px] text-ink placeholder:font-sans placeholder:text-faint focus:outline-none ${
-            invalid ? 'border-bad/70' : 'border-line focus:border-line-strong'
+          className={`h-12 w-full rounded-lg border bg-panel pr-3.5 pl-10 font-mono text-[13px] text-ink shadow-sm shadow-shade/30 transition-colors placeholder:text-faint focus:outline-none ${
+            invalid ? 'border-bad/70' : 'border-line-strong focus:border-ink/40'
           }`}
         />
-        {invalid && (
-          <p className="absolute -bottom-5 left-1 text-[11px] text-bad">That doesn&apos;t look like a YouTube link.</p>
-        )}
+        {invalid && <p className="absolute -bottom-5 left-1 font-mono text-[11px] text-bad">not a YouTube link</p>}
       </div>
       <div className={`flex gap-2 ${invalid ? 'mt-4 sm:mt-0' : ''}`}>
-        <button type="submit" className="btn-primary h-11 flex-1 sm:flex-none" disabled={disabled || !value.trim()}>
-          <PlayIcon size={15} />
-          Play Now
+        <button type="submit" className="btn-primary h-12 flex-1 px-4 sm:flex-none" disabled={disabled || !value.trim()}>
+          <PlayIcon size={14} />
+          Play now
         </button>
-        <button type="button" className="btn h-11 flex-1 sm:flex-none" disabled={disabled || !value.trim()} onClick={() => submit('queue')}>
-          <PlusIcon size={16} />
+        <button type="button" className="btn h-12 flex-1 px-4 sm:flex-none" disabled={disabled || !value.trim()} onClick={() => submit('queue')}>
+          <PlusIcon size={15} />
           Queue
         </button>
       </div>

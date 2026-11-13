@@ -44,28 +44,35 @@ export function ShareButton({ url }: { url: string }) {
   };
 
   return (
-    <div className="relative flex items-center" ref={popRef}>
-      <button type="button" onClick={copy} className="btn rounded-r-none border-r-0 px-3" title={url}>
-        {copied ? <CheckIcon className="text-lock" /> : <LinkIcon />}
-        <span className="hidden md:inline">{copied ? 'Copied' : 'Copy LAN Link'}</span>
+    <div className="relative flex items-center gap-0.5" ref={popRef}>
+      <button
+        type="button"
+        onClick={copy}
+        className="inline-flex h-9 items-center gap-2 rounded-md px-2.5 text-[13px] font-medium text-ink transition-colors hover:bg-sunken"
+        title={url}
+      >
+        {copied ? <CheckIcon size={16} className="text-lock" /> : <LinkIcon size={16} />}
+        <span className="hidden md:inline">{copied ? 'Copied' : 'Copy link'}</span>
       </button>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="icon-btn rounded-l-none"
+        className="inline-flex size-9 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-sunken hover:text-ink"
         aria-label="Show QR code"
         aria-expanded={open}
       >
-        <QrIcon />
+        <QrIcon size={16} />
       </button>
 
       {open && (
-        <div className="card absolute top-12 right-0 z-30 w-64 p-4 shadow-2xl shadow-shade">
-          <p className="label mb-3">Scan to join</p>
+        <div className="rise absolute top-[calc(100%+12px)] right-0 z-40 w-64 rounded-xl border border-line bg-panel p-4 shadow-2xl shadow-shade">
+          <p className="label mb-3">
+            <span className="text-faint">→</span> Scan to join
+          </p>
           {svg ? (
             <div className="overflow-hidden rounded-lg [&>svg]:block [&>svg]:h-auto [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: svg }} />
           ) : (
-            <div className="aspect-square rounded-lg bg-line" />
+            <div className="aspect-square rounded-lg bg-sunken" />
           )}
           <p className="mt-3 font-mono text-[11px] break-all text-muted select-all">{url}</p>
         </div>

@@ -4,7 +4,9 @@ Paste a YouTube link, and everyone in the room hears it on their own device and 
 
 No audio goes through the server. Every device runs its own YouTube IFrame player; the server only keeps one authoritative timeline and each client steers its player onto it.
 
-**Stack:** Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · `ws`. A small custom server (`server.ts`) runs Next.js and the WebSocket sync channel in **one process on one port**.
+**Live:** https://sub50.vercel.app — open it, share the room link, listen together.
+
+**Stack:** Next.js 16 (App Router) · TypeScript · Tailwind CSS 4 · `ws` · Upstash Redis. The sync channel is `/api/ws`: on Vercel a Function serves it with rooms in Redis; locally (or self-hosted) `server.ts` serves Next.js and `/api/ws` in **one process on one port** with rooms in memory.
 
 ## Quick start
 
@@ -15,10 +17,10 @@ npm install
 npm run dev
 ```
 
-`npm run dev` starts Next.js with hot reload and the `/ws` sync socket on port 3000, then prints the URL for phones plus a QR code:
+`npm run dev` starts Next.js with hot reload and the `/api/ws` sync socket on port 3000 (rooms in memory, no Redis needed), then prints the URL for phones plus a QR code:
 
 ```text
-◉ Sub50 dev server on 0.0.0.0:3000  (sync socket: /ws)
+◉ Sub50 dev server on 0.0.0.0:3000  (sync socket: /api/ws)
 Desktop:  http://localhost:3000
 Phone:    http://192.168.1.23:3000
 ```
@@ -78,38 +80,69 @@ Right after a load, seek or resume there is no audio continuity to protect, so t
 
 | command | does |
 |---|---|
-| `npm run dev` | `tsx watch server.ts --dev`: Next.js + HMR + `/ws` on :3000, prints LAN URL + QR |
+| `npm run dev` | `tsx watch server.ts --dev`: Next.js + HMR + `/api/ws` on :3000, prints LAN URL + QR |
 | `npm test` | unit tests (URL parser, room engine, clock sync, drift bands) |
 | `npm run typecheck` | `tsc --noEmit` over the whole project |
-| `npm run build` | `next build` (type-checks too) + bundles `server.ts` → `dist/server.js` |
-| `npm start` | production: `node dist/server.js` serves Next.js and `/ws` on `$PORT` |
+| `npm run build` | `next build` (type-checks too); this is what Vercel runs |
+| `npm run build:server` | bundles `server.ts` → `dist/server.js` for self-hosting |
+| `npm start` | self-hosted production: `node dist/server.js` serves Next.js and `/api/ws` on `$PORT` |
+
+Redis integration tests run only with credentials: `npx tsx --env-file=.env.local --test src/server/store/redis.test.ts`.
 
 In dev, phones load the site by LAN IP, so `next.config.ts` adds this machine's LAN addresses to `allowedDevOrigins`. Without that, Next blocks the HMR and dev chunks for those origins.
 
 ## Deploying
 
-Production is one Node process: Next.js plus the WebSocket on `$PORT`, with a health check at `/healthz`.
+### Vercel (what https://sub50.vercel.app runs)
+
+```mermaid
+flowchart LR
+    T1[Tab A] -- wss /api/ws --> F1[Function instance 1]
+    T2[Tab B] -- wss /api/ws --> F2[Function instance 2]
+    F1 -- "Lua CAS + PUBLISH" --> R[(Upstash Redis<br/>sub50-rooms · iad1)]
+    F2 -- "Lua CAS + PUBLISH" --> R
+    R -- "psubscribe sub50:ch:*" --> F1
+    R -- "psubscribe sub50:ch:*" --> F2
+```
+
+- `src/app/api/ws/route.ts` upgrades the request with `upgradeWebSocket()` from `@vercel/functions`. Sockets of one room can land on different instances, so rooms, presence and broadcasts live in **Upstash Redis**. Every commit is a compare-and-swap on the room's `(epoch, seq)` that publishes the new state in the same atomic step.
+- **Sockets rotate every 5 minutes on Hobby** (`maxDuration = 300`). The client reconnects in ~50ms with the same per-tab session id, so it stays the same listener (and host). Playback doesn't stop: it runs on the local clock between sockets.
+- Functions and Redis are pinned to the same region (`vercel.ts` → `iad1`), so room operations are in-region round trips. **Clock-sync accuracy depends on the listener ↔ region path**: pick the region closest to where people actually listen. Upstash fixes a database's primary region at creation, so moving region means a new database (`vercel integration add upstash/upstash-kv --meta primaryRegion=<region>`) plus `regions` in `vercel.ts`.
+
+Setup from scratch:
 
 ```bash
-npm run build && PORT=8080 npm start     # or:
+vercel link                                    # creates/links the project (and can connect the Git repo)
+vercel integration add upstash/upstash-kv --meta primaryRegion=iad1   # accept Upstash terms in the browser once
+vercel env pull .env.local                     # KV_REST_API_URL / KV_REST_API_TOKEN for local Redis tests
+git push                                       # with the Git integration: PRs get previews, main deploys to production
+```
+
+Preview deployments sit behind Vercel's deployment protection and share the same Redis database as production (room ids are random, so they don't collide). To test a preview's `/api/ws` from a script, send the local `VERCEL_OIDC_TOKEN` from `.env.local` as the `x-vercel-trusted-oidc-idp-token` header.
+
+**Redis budget:** clock sync (PING/PONG) never touches Redis; it is answered by the instance holding the socket. Room commands are 2 Redis commands each, presence is refreshed once a minute per listener, and telemetry is throttled (steady-state jitter at most every 10s). A two-person session is in the low hundreds of commands per hour, which fits the Upstash free tier for regular listening.
+
+### Self-hosting (one process, no Redis)
+
+```bash
+npm run build && npm run build:server && PORT=8080 npm start     # or:
 docker build -t sub50 . && docker run -p 3000:3000 sub50
 ```
 
-Room state lives **in memory**, and every peer in a room must hold a socket to the same process. So run exactly **one instance** on a host that keeps a long-lived Node process. Two replicas would split rooms between them, and a restart clears all rooms (clients reconnect and re-join automatically, but queues are lost).
+`server.ts` keeps rooms in memory, so run exactly **one instance** (a restart clears rooms; clients reconnect and re-join automatically). Health check: `/healthz`.
 
-That's also why this isn't a Vercel deploy: a custom server can't run there, and functions don't share in-memory rooms. Use one of these instead:
+- **Railway**: deploy the repo; it detects the Dockerfile. `PORT` is injected.
+- **Render**: Web Service, build `npm ci && npm run build && npm run build:server`, start `npm start`, health check `/healthz`.
+- **Fly.io**: `fly launch` (Dockerfile, internal port `3000`), `fly scale count 1`, and in `fly.toml` set `auto_stop_machines = "off"`, `min_machines_running = 1`.
 
-- **Railway**: deploy the repo; it detects the Dockerfile, or set build `npm run build` and start `npm start`. `PORT` is injected.
-- **Render**: Web Service, build `npm ci && npm run build`, start `npm start`, health check path `/healthz`. WebSockets work on web services.
-- **Fly.io**: `fly launch` (uses the Dockerfile; internal port `3000`), then `fly scale count 1`. In `fly.toml` set `auto_stop_machines = "off"` and `min_machines_running = 1` so idle rooms survive.
-
-Behind HTTPS the client switches to `wss://` automatically. To point the client at a sync server on another host, build with `NEXT_PUBLIC_WS_URL=wss://your-server/ws`.
+Behind HTTPS the client switches to `wss://` automatically. To point the client at a sync server on another host, build with `NEXT_PUBLIC_WS_URL=wss://your-server/api/ws`.
 
 | env | default | used by |
 |---|---|---|
-| `PORT` | `3000` | server |
-| `HOST` | `0.0.0.0` | server bind address |
-| `NEXT_PUBLIC_WS_URL` | same origin `/ws` | client build (inlined by Next) |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | set by the Upstash integration | Vercel Function (Redis rooms) |
+| `PORT` | `3000` | self-hosted server |
+| `HOST` | `0.0.0.0` | self-hosted bind address |
+| `NEXT_PUBLIC_WS_URL` | same origin `/api/ws` | client build (inlined by Next) |
 
 ## Known limits
 
@@ -121,14 +154,21 @@ Behind HTTPS the client switches to `wss://` automatically. To point the client 
 ## Layout
 
 ```text
-server.ts            custom server: Next.js handler, /ws sync socket, /healthz, LAN banner
+server.ts            self-hosted server: Next.js handler, /api/ws sync socket, /healthz, LAN banner
 next.config.ts       allowedDevOrigins (LAN IPs), Turbopack root
+vercel.ts            Vercel project config: function region next to Redis
 src/
-├── app/             App Router: layout (Geist, viewport), page (server-side ?room= redirect), globals.css
+├── app/             App Router: layout, page (server-side ?room= redirect), globals.css
+│   └── api/ws/      the sync socket as a Vercel Function (upgradeWebSocket)
 ├── components/      ClientShell (ssr: false) → Sub50App, deck, scrubber, queue, gate, telemetry pill
 ├── hooks/           useYouTubeSync (drift engine), useRoom (socket → React state)
-├── lib/             clock sync, reconnecting socket client, drift math, YouTube API loader
-├── server/          RoomManager, message validation, oEmbed titles, LAN detection
+├── lib/             clock sync, reconnecting socket client, drift math, YouTube API loader, session id
+├── server/
+│   ├── engine.ts    pure room state machine (every transition, no I/O)
+│   ├── hub.ts       per-instance SyncHub: local sockets, presence, telemetry throttling
+│   ├── socket.ts    attachSocket(): WELCOME, PING/PONG, flood guard, heartbeat, ordered commands
+│   ├── store/       RoomStore: memory (self-host) · Upstash Redis (Vercel)
+│   └── …            message validation, oEmbed titles, LAN detection
 └── shared/          wire protocol + sync tunables, YouTube URL parser, room ids
 ```
 

@@ -13,12 +13,18 @@ import { UrlBar } from './UrlBar';
 
 const VIDEO_PREF_KEY = 'sub50:showVideo';
 
+/**
+ * Phones default to audio-only: the hidden player drops to YouTube's smallest
+ * stream, which means fewer stalls on mobile data and Wi-Fi. A saved choice wins.
+ */
 function loadVideoPref(): boolean {
   try {
-    return localStorage.getItem(VIDEO_PREF_KEY) !== '0';
+    const saved = localStorage.getItem(VIDEO_PREF_KEY);
+    if (saved !== null) return saved !== '0';
   } catch {
-    return true;
+    /* storage unavailable */
   }
+  return !matchMedia('(pointer: coarse)').matches;
 }
 
 /** The whole player. Browser-only: rendered through ClientShell with SSR off. */

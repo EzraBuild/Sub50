@@ -101,16 +101,26 @@ export type ServerMessage =
 export const SYNC = {
   /** PLAY / SEEK are scheduled this far ahead so all peers start together. */
   START_DELAY_MS: 350,
-  /** Track changes are scheduled further ahead to give peers time to buffer. */
-  TRACK_START_DELAY_MS: 1500,
-  /** Drift bands (seconds), straight from the spec. */
+  /** Track changes are scheduled further ahead so phones (slower to buffer) start on time too. */
+  TRACK_START_DELAY_MS: 2500,
+  /** Drift bands (seconds). */
   LOCK_S: 0.05,
   TOLERANCE_S: 0.15,
-  HARD_SEEK_S: 1.5,
-  /** Rate nudges stop once drift is back under this (well inside LOCK). */
+  /**
+   * Beyond this, seek instead of nudging. The spec said 1.5s, but closing 500ms at
+   * ±5% takes ~10s of audibly-off playback, and phones showed exactly that.
+   */
+  HARD_SEEK_S: 0.6,
+  /** Nudges stop once drift is back under this (well inside LOCK). */
   NUDGE_TARGET_S: 0.02,
-  NUDGE_FAST: 1.05,
-  NUDGE_SLOW: 0.95,
+  /** ±5% rate nudge, or ±10% when drift is above STRONG_NUDGE_S, so no nudge lasts much past 5s. */
+  NUDGE: 0.05,
+  NUDGE_STRONG: 0.1,
+  STRONG_NUDGE_S: 0.3,
+  /** A nudge must move drift by at least this share of what its rate implies, or it's ignored by the player. */
+  NUDGE_MIN_EFFECT: 0.4,
+  /** How long a nudge runs before we judge whether it is actually working. */
+  NUDGE_VERIFY_MS: 2000,
 } as const;
 
 export const LIMITS = {

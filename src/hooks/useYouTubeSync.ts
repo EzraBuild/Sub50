@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SYNC, type RoomState, type SyncStatus } from '../shared/protocol';
-import { chooseCorrection, clamp, expectedTime, median, nudgeDone } from '../lib/drift';
+import { chooseCorrection, clamp, expectedTime, median, nudgeDone, rateIsEffective } from '../lib/drift';
 import type { SyncClient } from '../lib/sync-client';
 import { YTState, describePlayerError, loadYouTubeApi } from '../lib/youtube-api';
 
@@ -16,7 +16,9 @@ const PLAY_RETRY_MS = 1500;
 /** ...and assume the browser is blocking autoplay after this long. */
 const BLOCKED_AFTER_MS = 3000;
 /** Give up on a rate nudge that hasn't converged and seek instead. */
-const MAX_NUDGE_MS = 20_000;
+const MAX_NUDGE_MS = 12_000;
+/** Phones resume slower after a seek; start them with a bigger lead (it is learned either way). */
+const isTouch = () => typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
 const REPORT_EVERY_MS = 2000;
 
 export interface SyncTelemetry {
@@ -37,6 +39,9 @@ interface Engine {
   rateSupported: boolean | null;
   rateCheckAt: number;
   nudgeStartedAt: number;
+  /** Drift when the current nudge began; used to check the nudge is doing anything. */
+  nudgeStartDrift: number;
+  nudgeVerified: boolean;
   settleUntil: number;
   playingSince: number | null;
   aligning: boolean;
@@ -64,12 +69,14 @@ const freshEngine = (): Engine => ({
   rateSupported: null,
   rateCheckAt: 0,
   nudgeStartedAt: 0,
+  nudgeStartDrift: 0,
+  nudgeVerified: false,
   settleUntil: 0,
   playingSince: null,
   aligning: true,
   samples: [],
   ticks: 0,
-  seekLead: 0.08,
+  seekLead: isTouch() ? 0.25 : 0.08,
   startLeadMs: 40,
   calibrate: null,
   playIssuedAt: null,
@@ -336,13 +343,27 @@ export function useYouTubeSync(client: SyncClient, room: RoomState | null) {
       }
 
       if (eng.rate !== 1) {
+        const elapsed = now - eng.nudgeStartedAt;
         if (nudgeDone(d, eng.rate)) {
           setRate(1);
           eng.aligning = false;
-        } else if (abs > SYNC.HARD_SEEK_S || now - eng.nudgeStartedAt > MAX_NUDGE_MS) {
-          hardSeek(s);
-          return publish('seeking', d);
-        } else {
+          eng.rateSupported = true;
+        } else if (!eng.nudgeVerified && elapsed >= SYNC.NUDGE_VERIFY_MS) {
+          // Judge the nudge by its effect, not by what the player reports.
+          if (rateIsEffective(eng.nudgeStartDrift, d, eng.rate, elapsed / 1000)) {
+            eng.nudgeVerified = true;
+            eng.rateSupported = true;
+          } else {
+            eng.rateSupported = false; // this player ignores fractional rates: seek from now on
+            hardSeek(s);
+            return publish('seeking', d);
+          }
+        }
+        if (eng.rate !== 1) {
+          if (abs > SYNC.HARD_SEEK_S || elapsed > MAX_NUDGE_MS) {
+            hardSeek(s);
+            return publish('seeking', d);
+          }
           return publish('correcting', d);
         }
       }
@@ -356,6 +377,8 @@ export function useYouTubeSync(client: SyncClient, room: RoomState | null) {
         }
         if (fix.kind === 'nudge') {
           setRate(fix.rate);
+          eng.nudgeStartDrift = d;
+          eng.nudgeVerified = false;
           return publish('correcting', d);
         }
         eng.aligning = false;

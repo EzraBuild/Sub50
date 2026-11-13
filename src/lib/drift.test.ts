@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chooseCorrection, expectedTime, median, nudgeDone } from './drift';
+import { chooseCorrection, expectedTime, median, nudgeDone, rateIsEffective } from './drift';
 
 const steady = { aligning: false, rateSupported: true };
 
@@ -11,12 +11,14 @@ test('expectedTime extrapolates while playing and parks before a scheduled start
   assert.equal(expectedTime({ ...s, isPlaying: false }, 99_999), 10);
 });
 
-test('steady-state bands match the spec', () => {
+test('steady-state bands', () => {
   assert.deepEqual(chooseCorrection(0.03, steady), { kind: 'none' }, '< 50ms locked');
   assert.deepEqual(chooseCorrection(-0.12, steady), { kind: 'none' }, '50-150ms tolerated');
-  assert.deepEqual(chooseCorrection(-0.4, steady), { kind: 'nudge', rate: 1.05 }, 'behind: speed up');
-  assert.deepEqual(chooseCorrection(0.9, steady), { kind: 'nudge', rate: 0.95 }, 'ahead: slow down');
-  assert.deepEqual(chooseCorrection(1.6, steady), { kind: 'seek' }, '> 1.5s hard seek');
+  assert.deepEqual(chooseCorrection(-0.2, steady), { kind: 'nudge', rate: 1.05 }, 'behind: speed up 5%');
+  assert.deepEqual(chooseCorrection(0.25, steady), { kind: 'nudge', rate: 0.95 }, 'ahead: slow down 5%');
+  assert.deepEqual(chooseCorrection(-0.5, steady), { kind: 'nudge', rate: 1.1 }, 'far behind: 10%');
+  assert.deepEqual(chooseCorrection(0.45, steady), { kind: 'nudge', rate: 0.9 }, 'far ahead: 10%');
+  assert.deepEqual(chooseCorrection(-0.7, steady), { kind: 'seek' }, '> 600ms: seek (a phone 500ms+ behind no longer waits ~10s)');
 });
 
 test('aligning after a discontinuity tightens the bands', () => {
@@ -36,6 +38,16 @@ test('nudge stops on target or on overshoot', () => {
   assert.equal(nudgeDone(-0.01, 1.05), true);
   assert.equal(nudgeDone(0.04, 1.05), true, 'overshot past zero while speeding up');
   assert.equal(nudgeDone(-0.04, 0.95), true, 'overshot past zero while slowing down');
+});
+
+test('a nudge counts as working only if drift actually moves', () => {
+  // 2s at 1.05 should close ~100ms. Phone behind by 500ms:
+  assert.equal(rateIsEffective(-0.5, -0.41, 1.05, 2), true, 'closed 90ms of the expected 100ms');
+  assert.equal(rateIsEffective(-0.5, -0.49, 1.05, 2), false, 'player ignored the rate: only 10ms');
+  assert.equal(rateIsEffective(-0.5, -0.55, 1.05, 2), false, 'drift got worse (buffering)');
+  // Ahead and slowing down at 10%: expect ~200ms over 2s.
+  assert.equal(rateIsEffective(0.45, 0.3, 0.9, 2), true);
+  assert.equal(rateIsEffective(0.45, 0.42, 0.9, 2), false);
 });
 
 test('median', () => {

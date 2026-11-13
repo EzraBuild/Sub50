@@ -26,15 +26,16 @@ export type Correction =
 /**
  * Picks a correction for a (smoothed) drift in seconds; positive = we're ahead.
  *
- * Steady state follows the spec bands exactly:
+ * Steady state:
  *   < 50 ms          locked, do nothing
  *   50 – 150 ms      tolerated, do nothing (no audible artefacts)
- *   150 ms – 1.5 s   nudge playback rate ±5% until back under the target
- *   > 1.5 s          hard seek
+ *   150 – 300 ms     nudge playback rate ±5% until back under the target
+ *   300 – 600 ms     nudge ±10%, so no nudge lasts much past 5s
+ *   > 600 ms         hard seek (with the learned seek lead)
  *
  * Right after a discontinuity (track load, seek, resume) we are `aligning`:
  * there is no audio continuity to protect yet, so we tighten the bands, using
- * a rate nudge from 50 ms and a seek beyond 250 ms instead of 1.5 s.
+ * a nudge from 50 ms and a seek beyond 250 ms.
  */
 export function chooseCorrection(drift: number, opts: { aligning: boolean; rateSupported: boolean }): Correction {
   const abs = Math.abs(drift);
@@ -43,9 +44,22 @@ export function chooseCorrection(drift: number, opts: { aligning: boolean; rateS
   if (abs > seekAbove) return { kind: 'seek' };
   if (abs > nudgeAbove) {
     if (!opts.rateSupported) return abs > SYNC.TOLERANCE_S ? { kind: 'seek' } : { kind: 'none' };
-    return { kind: 'nudge', rate: drift > 0 ? SYNC.NUDGE_SLOW : SYNC.NUDGE_FAST };
+    const delta = abs > SYNC.STRONG_NUDGE_S ? SYNC.NUDGE_STRONG : SYNC.NUDGE;
+    return { kind: 'nudge', rate: drift > 0 ? 1 - delta : 1 + delta };
   }
   return { kind: 'none' };
+}
+
+/**
+ * Is a running nudge actually changing the drift? Some mobile YouTube players
+ * accept (and even report) a fractional rate without playing any faster.
+ * `corrected` is how far drift moved toward zero; a working nudge at `rate`
+ * for `elapsedS` seconds should have moved it by about |rate − 1| · elapsedS.
+ */
+export function rateIsEffective(startDrift: number, nowDrift: number, rate: number, elapsedS: number): boolean {
+  const expected = Math.abs(rate - 1) * elapsedS;
+  const corrected = rate > 1 ? nowDrift - startDrift : startDrift - nowDrift;
+  return corrected >= expected * SYNC.NUDGE_MIN_EFFECT;
 }
 
 /** Should an in-flight rate nudge stop? (back on target, or overshot the zero line) */

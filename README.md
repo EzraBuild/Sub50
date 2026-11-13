@@ -67,10 +67,11 @@ PLAY, SEEK and track changes are **scheduled** slightly in the future (`updatedA
 |---|---|
 | < 50ms | **SUB50 LOCKED**, nothing to do |
 | 50–150ms | tolerated, no correction (avoids audible artefacts) |
-| 150ms–1.5s | playback rate 1.05× / 0.95× until back within ~20ms |
-| > 1.5s | hard `seekTo(expected + learned seek latency)` |
+| 150–300ms | playback rate 1.05× / 0.95× until back within ~20ms |
+| 300–600ms | playback rate 1.10× / 0.90×, so a nudge never drags on |
+| > 600ms | hard `seekTo(expected + learned seek latency)` |
 
-Right after a load, seek or resume there is no audio continuity to protect, so the bands tighten (nudge from 50ms, seek from 250ms) to lock quickly. If a video ignores fractional rates, the engine detects it and seeks instead.
+Right after a load, seek or resume there is no audio continuity to protect, so the bands tighten (nudge from 50ms, seek from 250ms) to lock quickly. A nudge has to prove itself: if drift hasn't moved at least 40% of what the rate implies after 2s (some mobile YouTube players accept a fractional rate without playing faster), the engine switches that device to seeking. Phones also start with a larger seek lead, get a 2.5s preroll on track changes, and default to audio-only, which pulls YouTube's smallest stream and stalls less.
 
 **No echo loops.** Programmatic player commands run with `isRemoteUpdateRef` raised, so the `onStateChange` they trigger is never sent back to the server. A pause that comes from you (tapping the video, lock-screen or headphone controls) is shared with the room, but only out of steady playback while the page is visible. A phone locking its screen, or a browser blocking autoplay, never pauses everyone.
 

@@ -1,14 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import {
-  LIMITS,
-  SYNC,
-  type ClientMessage,
-  type Peer,
-  type QueueItem,
-  type RoomState,
-  type ServerMessage,
-} from '../shared/protocol';
-import { parseYouTubeId } from '../shared/youtube';
+import { LIMITS, type ClientMessage, type Peer, type RoomState, type ServerMessage } from '../shared/protocol';
+import { applyCommand, applyTitle, createRoom, isRoomCommand, withHost } from './engine';
 
 /** Anything we can push a frame to. Wraps a ws socket in production, a stub in tests. */
 export interface Connection {
@@ -95,86 +87,24 @@ export class RoomManager {
     // Everything else must target the room this socket actually joined.
     const room = peer.roomId === msg.roomId ? this.rooms.get(msg.roomId) : undefined;
     if (!room) return;
-    const s = room.state;
 
-    switch (msg.type) {
-      case 'CHANGE_VIDEO': {
-        const videoId = parseYouTubeId(msg.url);
-        if (!videoId) return this.error(peer, 'That does not look like a YouTube link.');
-        this.startTrack(room, { videoId, title: '', addedBy: peer.name });
-        return this.broadcastState(room);
-      }
-
-      case 'PLAY': {
-        // Already playing: re-sending the state is enough. Letting one (possibly
-        // drifted) client re-anchor everyone would cause a room-wide jump.
-        if (s.isPlaying || !s.videoId) return this.send(peer, { type: 'SYNC_STATE', state: s });
-        s.isPlaying = true;
-        s.lastTimestamp = msg.timestamp;
-        s.updatedAt = this.now() + SYNC.START_DELAY_MS;
-        return this.broadcastState(room);
-      }
-
-      case 'PAUSE': {
-        if (!s.videoId) return;
-        s.isPlaying = false;
-        s.lastTimestamp = msg.timestamp;
-        s.updatedAt = this.now();
-        return this.broadcastState(room);
-      }
-
-      case 'SEEK': {
-        if (!s.videoId) return;
-        s.lastTimestamp = msg.timestamp;
-        s.updatedAt = this.now() + (s.isPlaying ? SYNC.START_DELAY_MS : 0);
-        return this.broadcastState(room);
-      }
-
-      case 'QUEUE_ADD': {
-        const videoId = parseYouTubeId(msg.url);
-        if (!videoId) return this.error(peer, 'That does not look like a YouTube link.');
-        if (s.queue.length >= LIMITS.QUEUE_MAX) return this.error(peer, 'The queue is full.');
-        const item: QueueItem = { id: newId(), videoId, title: msg.title?.trim() ?? '', addedBy: peer.name };
-        // Nothing playing yet: "+ Queue" should just start the track.
-        if (!s.videoId) {
-          this.startTrack(room, item);
-          return this.broadcastState(room);
-        }
-        s.queue.push(item);
-        this.fillTitle(room, videoId);
-        return this.broadcastQueue(room);
-      }
-
-      case 'QUEUE_REMOVE': {
-        const before = s.queue.length;
-        s.queue = s.queue.filter((q) => q.id !== msg.itemId);
-        if (s.queue.length === before) return;
-        return this.broadcastQueue(room);
-      }
-
-      case 'QUEUE_PLAY': {
-        const idx = s.queue.findIndex((q) => q.id === msg.itemId);
-        if (idx === -1) return;
-        const [item] = s.queue.splice(idx, 1);
-        this.startTrack(room, item!);
-        return this.broadcastState(room);
-      }
-
-      case 'TRACK_ENDED': {
-        // Every peer reports the end; only the first report for the live track counts.
-        if (msg.trackId !== s.trackId || !s.isPlaying) return;
-        this.advance(room);
-        return this.broadcastState(room);
-      }
-
-      case 'REPORT': {
-        peer.driftMs = msg.driftMs === null ? null : Math.round(msg.driftMs);
-        peer.rttMs = msg.rttMs === null ? null : Math.round(msg.rttMs);
-        peer.status = msg.status;
-        room.peersDirty = true;
-        return;
-      }
+    if (msg.type === 'REPORT') {
+      peer.driftMs = msg.driftMs === null ? null : Math.round(msg.driftMs);
+      peer.rttMs = msg.rttMs === null ? null : Math.round(msg.rttMs);
+      peer.status = msg.status;
+      room.peersDirty = true;
+      return;
     }
+    if (!isRoomCommand(msg)) return;
+
+    const out = applyCommand(room.state, msg, { now: this.now(), peerName: peer.name, newId });
+    if (out.kind === 'error') return this.error(peer, out.message);
+    if (out.kind === 'unchanged') {
+      if (out.resend) this.send(peer, { type: 'SYNC_STATE', state: room.state });
+      return;
+    }
+    this.commit(room, out.state, out.queueOnly);
+    if (out.resolveTitle) this.fillTitle(room, out.resolveTitle);
   }
 
   // -------------------------------------------------------------------------
@@ -215,23 +145,7 @@ export class RoomManager {
 
     let room = this.rooms.get(roomId);
     if (!room) {
-      room = {
-        state: {
-          roomId,
-          videoId: null,
-          title: null,
-          trackId: null,
-          isPlaying: false,
-          lastTimestamp: 0,
-          updatedAt: this.now(),
-          queue: [],
-          hostId: peer.id,
-          seq: 0,
-        },
-        peers: new Map(),
-        emptySince: null,
-        peersDirty: false,
-      };
+      room = { state: createRoom(roomId, peer.id, this.now()), peers: new Map(), emptySince: null, peersDirty: false };
       this.rooms.set(roomId, room);
     }
 
@@ -240,7 +154,7 @@ export class RoomManager {
     peer.joinedAt = this.now();
     room.peers.set(peer.id, peer);
     room.emptySince = null;
-    if (!room.peers.has(room.state.hostId)) room.state.hostId = peer.id;
+    if (!room.peers.has(room.state.hostId)) room.state = withHost(room.state, peer.id) ?? room.state;
 
     this.send(peer, { type: 'SYNC_STATE', state: room.state });
     this.broadcastPeers(room);
@@ -257,63 +171,26 @@ export class RoomManager {
     }
     if (room.state.hostId === peer.id) {
       const next = [...room.peers.values()].sort((a, b) => a.joinedAt - b.joinedAt)[0]!;
-      room.state.hostId = next.id;
-      this.broadcastState(room);
+      const handedOff = withHost(room.state, next.id);
+      if (handedOff) this.commit(room, handedOff, false);
     }
     this.broadcastPeers(room);
-  }
-
-  private startTrack(room: Room, item: Pick<QueueItem, 'videoId' | 'title' | 'addedBy'>): void {
-    const s = room.state;
-    s.videoId = item.videoId;
-    s.title = item.title || null;
-    s.trackId = newId();
-    s.isPlaying = true;
-    s.lastTimestamp = 0;
-    s.updatedAt = this.now() + SYNC.TRACK_START_DELAY_MS;
-    this.fillTitle(room, item.videoId);
-  }
-
-  private advance(room: Room): void {
-    const s = room.state;
-    const next = s.queue.shift();
-    if (next) return this.startTrack(room, next);
-    // Queue exhausted: park at the end of the track.
-    s.lastTimestamp += Math.max(0, this.now() - s.updatedAt) / 1000;
-    s.isPlaying = false;
-    s.updatedAt = this.now();
   }
 
   /** Fills in missing titles asynchronously and re-broadcasts whatever changed. */
   private fillTitle(room: Room, videoId: string): void {
     void this.resolveTitle(videoId).then((title) => {
       if (!title || this.rooms.get(room.state.roomId) !== room) return;
-      const s = room.state;
-      let stateChanged = false;
-      let queueChanged = false;
-      if (s.videoId === videoId && !s.title) {
-        s.title = title;
-        stateChanged = true;
-      }
-      for (const q of s.queue) {
-        if (q.videoId === videoId && !q.title) {
-          q.title = title;
-          queueChanged = true;
-        }
-      }
-      if (!stateChanged && !queueChanged) return;
-      if (stateChanged) this.broadcastState(room);
-      else this.broadcastQueue(room);
+      const out = applyTitle(room.state, videoId, title);
+      if (out) this.commit(room, out.state, out.queueOnly);
     });
   }
 
-  private broadcastState(room: Room): void {
-    room.state.seq++;
-    this.broadcast(room, { type: 'SYNC_STATE', state: room.state });
-  }
-
-  private broadcastQueue(room: Room): void {
-    this.broadcast(room, { type: 'QUEUE_UPDATED', roomId: room.state.roomId, queue: room.state.queue });
+  /** Adopts a new state from the engine and broadcasts it. */
+  private commit(room: Room, state: RoomState, queueOnly: boolean): void {
+    room.state = state;
+    if (queueOnly) this.broadcast(room, { type: 'QUEUE_UPDATED', roomId: state.roomId, queue: state.queue });
+    else this.broadcast(room, { type: 'SYNC_STATE', state });
   }
 
   private broadcastPeers(room: Room): void {

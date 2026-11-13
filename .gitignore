@@ -4,7 +4,9 @@ dist/
 .env
 .env.*
 !.env.example
-.vite/
 .DS_Store
 Thumbs.db
 coverage/
+.next/
+next-env.d.ts
+*.tsbuildinfo

@@ -10,6 +10,7 @@ import { BlockedOverlay, Gate, ToastView } from './Gate';
 import { Header } from './Header';
 import { Peers } from './Peers';
 import { Queue } from './Queue';
+import { SyncScope } from './SyncScope';
 import { UrlBar } from './UrlBar';
 
 const VIDEO_PREF_KEY = 'sub50:showVideo';
@@ -135,6 +136,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
               onResync={sync.resync}
               onNext={() => state?.queue[0] && send(actions.queuePlay(state.queue[0].id))}
             />
+            <SyncScope peers={peers} selfId={selfId} self={{ driftMs: sync.telemetry.driftMs, status }} />
           </div>
           <aside className="rise relative min-w-0 border-t border-line lg:border-t-0" style={{ animationDelay: '220ms' }}>
             <Cross at="tl" className="hidden lg:block" />

@@ -13,7 +13,7 @@ interface Props {
 export function Queue({ queue, disabled, onPlay, onRemove }: Props) {
   return (
     <section aria-label="Shared queue">
-      <SectionHead index="02" title="Up next" meta={`${queue.length} queued`} />
+      <SectionHead index="03" title="Up next" meta={`${queue.length} queued`} />
 
       {queue.length === 0 ? (
         <div className="p-4 sm:p-5">

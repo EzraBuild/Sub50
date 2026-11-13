@@ -228,7 +228,10 @@ export class SyncHub {
     if (!due) return;
 
     peer.published = { at: this.now(), status: p.status, driftMs: p.driftMs, rttMs: p.rttMs };
-    await this.fanOut(roomId, { type: 'PEER_UPDATE', roomId, peer: toPeer(p) });
+    p.lastSeen = this.now();
+    // Persist too, so someone joining later gets current numbers in their first PEERS
+    // instead of the join-time "idle" (same throttle, so no extra traffic in steady state).
+    await Promise.all([this.store.putPeer(roomId, p), this.fanOut(roomId, { type: 'PEER_UPDATE', roomId, peer: toPeer(p) })]);
   }
 
   private async refreshPresence(): Promise<void> {

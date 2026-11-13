@@ -211,3 +211,15 @@ test('a real leave still hands host over and drops the peer', async () => {
   assert.equal(b.state()!.hostId, 'session-bo');
   assert.deepEqual(b.peers().map((p) => p.id), ['session-bo']);
 });
+
+test('someone joining later sees current telemetry, not the join-time idle', async () => {
+  const c = cluster(2);
+  const a = c.client('a', c.hubs[0]);
+  await a.join('jam', 'Phone', 'session-phone');
+  await a.send({ type: 'REPORT', roomId: 'jam', driftMs: -37, rttMs: 41, status: 'locked' });
+
+  const late = c.client('late', c.hubs[1]);
+  await late.join('jam', 'Late', 'session-late');
+  const phone = late.peers().find((p) => p.id === 'session-phone')!;
+  assert.deepEqual([phone.status, phone.driftMs, phone.rttMs], ['locked', -37, 41]);
+});

@@ -176,6 +176,27 @@
   animation-play-state: paused;
 }
 
+/* Sync scope: a slow sweep across the ruler. */
+@keyframes scope-scan {
+  0% {
+    left: 0%;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+.scope-scan {
+  animation: scope-scan 4.5s linear infinite;
+}
+
 /* YouTube swaps our mount node for its iframe; make it fill the deck. */
 .yt-host iframe {
   position: absolute;
@@ -220,7 +241,8 @@
   .lock-glow,
   .ring-out,
   .rise,
-  .eq-bar {
+  .eq-bar,
+  .scope-scan {
     animation: none;
   }
   body {

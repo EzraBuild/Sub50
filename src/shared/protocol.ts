@@ -69,7 +69,8 @@ export interface Peer {
 
 export type ClientMessage =
   | { type: 'PING'; clientTime: number }
-  | { type: 'JOIN_ROOM'; roomId: string; username: string }
+  /** `sessionId`: stable per browser tab, so a reconnect is the same peer (and keeps host). */
+  | { type: 'JOIN_ROOM'; roomId: string; username: string; sessionId?: string }
   | { type: 'CHANGE_VIDEO'; roomId: string; url: string }
   | { type: 'PLAY'; roomId: string; timestamp: number }
   | { type: 'PAUSE'; roomId: string; timestamp: number }

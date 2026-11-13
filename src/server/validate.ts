@@ -6,6 +6,8 @@ const STATUSES: ReadonlySet<SyncStatus> = new Set<SyncStatus>([
 
 type Obj = Record<string, unknown>;
 
+const SESSION_ID = /^[A-Za-z0-9_-]{8,64}$/;
+
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown, max: number): string | null =>
   typeof v === 'string' && v.length <= max ? v : null;
@@ -36,7 +38,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
   switch (data.type) {
     case 'JOIN_ROOM': {
       const username = str(data.username, 200);
-      return username === null ? null : { type: 'JOIN_ROOM', roomId, username };
+      if (username === null) return null;
+      if (data.sessionId === undefined) return { type: 'JOIN_ROOM', roomId, username };
+      const sessionId = str(data.sessionId, 64);
+      return sessionId !== null && SESSION_ID.test(sessionId) ? { type: 'JOIN_ROOM', roomId, username, sessionId } : null;
     }
     case 'CHANGE_VIDEO': {
       const url = str(data.url, LIMITS.URL_MAX);

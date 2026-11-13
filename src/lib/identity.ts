@@ -1,8 +1,30 @@
 const ADJECTIVES = ['Neon', 'Cobalt', 'Velvet', 'Static', 'Lunar', 'Amber', 'Quiet', 'Electric', 'Midnight', 'Golden', 'Hollow', 'Crystal'];
 const NOUNS = ['Otter', 'Falcon', 'Moth', 'Lynx', 'Heron', 'Fox', 'Raven', 'Koi', 'Wolf', 'Panda', 'Gecko', 'Orca'];
 const NAME_KEY = 'sub50:name';
+const SESSION_KEY = 'sub50:session';
 
 const pick = <T,>(list: readonly T[]): T => list[Math.floor(Math.random() * list.length)]!;
+
+/**
+ * Stable for the life of this tab (survives reloads and reconnects, not new tabs),
+ * so the server treats a reconnect as the same listener rather than a new one.
+ */
+export function getSessionId(): string {
+  try {
+    const saved = sessionStorage.getItem(SESSION_KEY);
+    if (saved && /^[A-Za-z0-9_-]{8,64}$/.test(saved)) return saved;
+  } catch {
+    /* storage unavailable: fall through to a per-page-load id */
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  const id = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  try {
+    sessionStorage.setItem(SESSION_KEY, id);
+  } catch {
+    /* ignore */
+  }
+  return id;
+}
 
 export function loadName(): string {
   try {

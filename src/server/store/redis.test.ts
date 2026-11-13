@@ -32,7 +32,7 @@ const waitFor = async (cond: () => boolean, ms = 8_000) => {
 
 after(async () => {
   if (!configured) return;
-  for (const room of ['cas', 'sub', 'hubs']) await stores[0]?.destroyRoom(room);
+  for (const room of ['cas', 'sub', 'hubs', 'presence']) await stores[0]?.destroyRoom(room);
   await Promise.all(stores.map((s) => s.close()));
 });
 
@@ -100,4 +100,14 @@ test('two hubs on two Redis connections share a room', { skip, timeout: 60_000 }
   await h2.disconnect('b');
   h1.stop();
   h2.stop();
+});
+
+test('peer removal is conditional on the owning connection', { skip }, async () => {
+  const a = make();
+  const peer = { id: 'tab-1', conn: 'conn-new', name: 'Ada', joinedAt: 1, lastSeen: Date.now(), driftMs: null, rttMs: null, status: 'idle' as const };
+  await a.putPeer('presence', peer);
+  await a.removePeer('presence', 'tab-1', 'conn-old'); // late close from the replaced socket
+  assert.deepEqual((await a.listPeers('presence')).map((p) => p.conn), ['conn-new']);
+  await a.removePeer('presence', 'tab-1', 'conn-new');
+  assert.equal((await a.listPeers('presence')).length, 0);
 });

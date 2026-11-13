@@ -68,8 +68,9 @@ export class MemoryStore implements RoomStore {
     if (entry) entry.touchedAt = this.now();
   }
 
-  async removePeer(roomId: string, peerId: string): Promise<void> {
+  async removePeer(roomId: string, peerId: string, conn?: string): Promise<void> {
     const room = this.peers.get(roomId);
+    if (conn !== undefined && room?.get(peerId)?.conn !== conn) return;
     room?.delete(peerId);
     if (room?.size === 0) this.peers.delete(roomId);
   }

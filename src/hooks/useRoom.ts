@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Peer, RoomState } from '../shared/protocol';
+import { getSessionId } from '../lib/identity';
 import { SyncClient, type ConnectionStatus } from '../lib/sync-client';
 
 export interface Toast {
@@ -9,12 +10,13 @@ export interface Toast {
 
 /** Owns the socket, mirrors room state into React, and exposes room actions. */
 export function useRoom(roomId: string, username: string) {
-  const client = useMemo(() => new SyncClient(), []);
+  const client = useMemo(() => new SyncClient(getSessionId()), []);
   const [state, setState] = useState<RoomState | null>(null);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [connection, setConnection] = useState<ConnectionStatus>('connecting');
   const [rttMs, setRttMs] = useState<number | null>(null);
-  const [selfId, setSelfId] = useState<string | null>(null);
+  // Our peer id is the tab's session id (stable across reconnects), not the connection id.
+  const selfId = client.sessionId;
   const [lanAddresses, setLanAddresses] = useState<string[]>([]);
   const [toast, setToast] = useState<Toast | null>(null);
 
@@ -22,7 +24,6 @@ export function useRoom(roomId: string, username: string) {
     const offMsg = client.onMessage((msg) => {
       switch (msg.type) {
         case 'WELCOME':
-          setSelfId(msg.clientId);
           setLanAddresses(msg.lanAddresses);
           break;
         case 'SYNC_STATE':

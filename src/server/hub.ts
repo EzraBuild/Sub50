@@ -56,7 +56,7 @@ export interface HubOptions {
 }
 
 const cleanName = (raw: string): string => raw.replace(/\s+/g, ' ').trim().slice(0, LIMITS.NAME_MAX) || 'Guest';
-const toPeer = ({ lastSeen: _seen, ...peer }: PresenceRecord): Peer => peer;
+const toPeer = ({ lastSeen: _seen, conn: _conn, ...peer }: PresenceRecord): Peer => peer;
 const syncFrame = (state: RoomState): string => JSON.stringify({ type: 'SYNC_STATE', state } satisfies ServerMessage);
 
 export class SyncHub {
@@ -108,7 +108,7 @@ export class SyncHub {
     this.peers.set(conn.id, {
       conn,
       roomId: null,
-      presence: { id: conn.id, name: 'Guest', joinedAt: now, lastSeen: now, driftMs: null, rttMs: null, status: 'idle' },
+      presence: { id: conn.id, conn: conn.id, name: 'Guest', joinedAt: now, lastSeen: now, driftMs: null, rttMs: null, status: 'idle' },
       published: { at: 0, status: 'idle', driftMs: null, rttMs: null },
     });
   }
@@ -124,7 +124,7 @@ export class SyncHub {
   async handle(connId: string, msg: ClientMessage): Promise<void> {
     const peer = this.peers.get(connId);
     if (!peer || msg.type === 'PING') return;
-    if (msg.type === 'JOIN_ROOM') return this.join(peer, msg.roomId, msg.username);
+    if (msg.type === 'JOIN_ROOM') return this.join(peer, msg.roomId, msg.username, msg.sessionId);
 
     // Everything else must target the room this socket actually joined.
     const roomId = peer.roomId;
@@ -148,22 +148,32 @@ export class SyncHub {
   // Rooms & presence
   // -------------------------------------------------------------------------
 
-  private async join(peer: LocalPeer, rawRoomId: string, username: string): Promise<void> {
+  private async join(peer: LocalPeer, rawRoomId: string, username: string, sessionId?: string): Promise<void> {
     const roomId = parseRoomId(rawRoomId);
     if (!roomId) return this.sendTo(peer, { type: 'ERROR', message: 'Invalid room id.' });
     if (peer.roomId && peer.roomId !== roomId) await this.leave(peer);
 
+    // The tab's session id is its identity in the room, so a reconnect (every 5 min
+    // on Vercel Hobby) takes over its own presence entry and keeps host and order.
+    const id = sessionId ?? peer.conn.id;
     const now = this.now();
-    const rejoin = peer.roomId === roomId;
-    peer.presence = { ...peer.presence, name: cleanName(username), lastSeen: now, ...(rejoin ? {} : { joinedAt: now }) };
+    const previous = (await this.store.listPeers(roomId)).find((p) => p.id === id);
+    peer.presence = {
+      ...peer.presence,
+      id,
+      conn: peer.conn.id,
+      name: cleanName(username),
+      lastSeen: now,
+      joinedAt: previous?.joinedAt ?? (peer.roomId === roomId ? peer.presence.joinedAt : now),
+    };
     peer.roomId = roomId;
     this.addLocal(roomId, peer.conn.id);
     await this.store.putPeer(roomId, peer.presence);
 
     const live = await this.livePeers(roomId);
     const result = await this.commit(roomId, (current) => {
-      if (!current) return createRoom(roomId, peer.conn.id, now, newId());
-      return live.some((p) => p.id === current.hostId) ? null : withHost(current, peer.conn.id);
+      if (!current) return createRoom(roomId, id, now, newId());
+      return live.some((p) => p.id === current.hostId) ? null : withHost(current, id);
     });
     // A commit was already delivered to every local socket, the joiner included.
     if (!result.changed && result.state) peer.conn.send(syncFrame(result.state));
@@ -175,12 +185,15 @@ export class SyncHub {
     if (!roomId) return;
     peer.roomId = null;
     this.removeLocal(roomId, peer.conn.id);
-    await this.store.removePeer(roomId, peer.conn.id);
+    const id = peer.presence.id;
+    // Only if this connection still owns the entry: a replacement socket may have taken it over.
+    await this.store.removePeer(roomId, id, peer.conn.id);
 
     const live = await this.livePeers(roomId);
+    if (live.some((p) => p.id === id)) return; // reconnected elsewhere: same peer, nothing changed
     if (live.length === 0) return;
     const successor = live[0]!.id;
-    await this.commit(roomId, (current) => (current && current.hostId === peer.conn.id ? withHost(current, successor) : null));
+    await this.commit(roomId, (current) => (current && current.hostId === id ? withHost(current, successor) : null));
     await this.broadcastPeers(roomId, live);
   }
 

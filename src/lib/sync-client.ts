@@ -34,14 +34,18 @@ export class SyncClient {
   private ws: WebSocket | null = null;
   private running = false;
   private attempt = 0;
-  private join: { roomId: string; username: string } | null = null;
+  private join: { roomId: string; username: string; sessionId: string } | null = null;
   private joined = false;
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private readonly messageListeners = new Set<MessageListener>();
   private readonly statusListeners = new Set<StatusListener>();
 
-  constructor(private readonly url: string = defaultSocketUrl()) {}
+  constructor(
+    /** Identifies this tab across reconnects (see getSessionId). */
+    readonly sessionId: string,
+    private readonly url: string = defaultSocketUrl(),
+  ) {}
 
   start(): void {
     if (this.running) return;
@@ -63,7 +67,7 @@ export class SyncClient {
 
   setRoom(roomId: string, username: string): void {
     const changed = this.join?.roomId !== roomId || this.join?.username !== username;
-    this.join = { roomId, username };
+    this.join = { roomId, username, sessionId: this.sessionId };
     if (this.joined) {
       if (changed) this.sendJoin(true);
     } else if (this.clock.sampleCount >= JOIN_AFTER_SAMPLES) {

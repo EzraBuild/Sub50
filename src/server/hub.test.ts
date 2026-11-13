@@ -25,7 +25,8 @@ function cluster(instances = 1) {
       id,
       hub,
       send: (msg: ClientMessage) => hub.handle(id, msg),
-      join: (roomId = 'jam', name = id) => hub.handle(id, { type: 'JOIN_ROOM', roomId, username: name }),
+      join: (roomId = 'jam', name = id, sessionId?: string) =>
+        hub.handle(id, { type: 'JOIN_ROOM', roomId, username: name, ...(sessionId ? { sessionId } : {}) }),
       count: (type: ServerMessage['type']) => all().filter((m) => m.type === type).length,
       last: <T extends ServerMessage['type']>(type: T) => all().filter((m) => m.type === type).at(-1) as Extract<ServerMessage, { type: T }> | undefined,
       state: () => (all().filter((m) => m.type === 'SYNC_STATE').at(-1) as { state: RoomState } | undefined)?.state,
@@ -139,7 +140,7 @@ test('peers whose instance died drop out once their presence goes stale', async 
   const c = cluster();
   const a = c.client('a');
   await a.join();
-  await c.store.putPeer('jam', { id: 'ghost', name: 'Ghost', joinedAt: 0, lastSeen: c.now() - PRESENCE.STALE_MS - 1, driftMs: null, rttMs: null, status: 'idle' });
+  await c.store.putPeer('jam', { id: 'ghost', conn: 'ghost-conn', name: 'Ghost', joinedAt: 0, lastSeen: c.now() - PRESENCE.STALE_MS - 1, driftMs: null, rttMs: null, status: 'idle' });
   const b = c.client('b');
   await b.join();
   assert.deepEqual(b.peers().map((p) => p.name), ['a', 'b']);
@@ -176,4 +177,37 @@ test('telemetry is throttled: steady jitter is batched, real state changes go ou
   await report('seeking', 900);
   assert.equal(b.count('PEER_UPDATE'), steady + 1, 'leaving the steady state is published');
   assert.equal(b.last('PEER_UPDATE')!.peer.status, 'seeking');
+});
+
+test('a reconnect with the same session keeps the peer id, its place, and host', async () => {
+  const c = cluster(2);
+  const a1 = c.client('a1', c.hubs[0]);
+  const b = c.client('b', c.hubs[1]);
+  await a1.join('jam', 'Ada', 'session-ada');
+  c.tick(1);
+  await b.join('jam', 'Bo', 'session-bo');
+  assert.equal(b.state()!.hostId, 'session-ada');
+
+  // Vercel closes a1 at the function limit; the tab reconnects (maybe on another instance)
+  // before the old socket's close is processed.
+  const a2 = c.client('a2', c.hubs[1]);
+  await a2.join('jam', 'Ada', 'session-ada');
+  await c.hubs[0]!.disconnect('a1');
+
+  assert.deepEqual(b.peers().map((p) => p.id), ['session-ada', 'session-bo'], 'no duplicate, original order kept');
+  assert.equal((await c.store.get('jam'))!.hostId, 'session-ada', 'host survives the reconnect');
+  const stored = await c.store.listPeers('jam');
+  assert.deepEqual(stored.map((p) => [p.id, p.conn]).sort(), [['session-ada', 'a2'], ['session-bo', 'b']], 'late close left the new entry alone');
+});
+
+test('a real leave still hands host over and drops the peer', async () => {
+  const c = cluster();
+  const a = c.client('a');
+  const b = c.client('b');
+  await a.join('jam', 'Ada', 'session-ada');
+  c.tick(1);
+  await b.join('jam', 'Bo', 'session-bo');
+  await c.hubs[0]!.disconnect('a');
+  assert.equal(b.state()!.hostId, 'session-bo');
+  assert.deepEqual(b.peers().map((p) => p.id), ['session-bo']);
 });

@@ -27,6 +27,14 @@ redis.call('PUBLISH', KEYS[2], ARGV[4])
 return 1
 `;
 
+// Remove a presence entry only if the given connection still owns it.
+const REMOVE_PEER_SCRIPT = `
+local cur = redis.call('HGET', KEYS[1], ARGV[1])
+if not cur then return 0 end
+if ARGV[2] ~= '' and cjson.decode(cur).conn ~= ARGV[2] then return 0 end
+return redis.call('HDEL', KEYS[1], ARGV[1])
+`;
+
 export interface RedisStoreOptions {
   url?: string;
   token?: string;
@@ -58,6 +66,7 @@ export class RedisStore implements RoomStore {
   private readonly checkMs: number;
   private readonly onError: (err: unknown) => void;
   private readonly cas;
+  private readonly removePeerScript;
   private readonly closers = new Set<() => void>();
 
   constructor(opts: RedisStoreOptions = {}) {
@@ -77,6 +86,7 @@ export class RedisStore implements RoomStore {
     this.checkMs = opts.subscriptionCheckMs ?? 30_000;
     this.onError = opts.onError ?? ((err) => console.error('[redis]', err));
     this.cas = this.redis.createScript<number | string>(CAS_SCRIPT);
+    this.removePeerScript = this.redis.createScript<number | string>(REMOVE_PEER_SCRIPT);
   }
 
   private roomKey = (id: string) => `${this.prefix}:room:${id}`;
@@ -186,8 +196,8 @@ export class RedisStore implements RoomStore {
     await this.redis.multi().hset(key, { [peer.id]: JSON.stringify(peer) }).expire(key, this.peersTtl).exec();
   }
 
-  async removePeer(roomId: string, peerId: string): Promise<void> {
-    await this.redis.hdel(this.peersKey(roomId), peerId);
+  async removePeer(roomId: string, peerId: string, conn?: string): Promise<void> {
+    await this.removePeerScript.exec([this.peersKey(roomId)], [peerId, conn ?? '']);
   }
 
   async listPeers(roomId: string): Promise<PresenceRecord[]> {

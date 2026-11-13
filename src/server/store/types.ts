@@ -4,6 +4,8 @@ import type { Peer, RoomState } from '../../shared/protocol';
 export interface PresenceRecord extends Peer {
   /** Server time (ms) the owning instance last confirmed this socket is open. */
   lastSeen: number;
+  /** Connection currently holding this peer. A reconnect takes the entry over. */
+  conn: string;
 }
 
 /** A frame fanned out to every instance that has sockets in the room. */
@@ -48,7 +50,11 @@ export interface RoomStore {
   subscribe(onMessage: (msg: Broadcast) => void, onReady?: () => void): () => void;
 
   putPeer(roomId: string, peer: PresenceRecord): Promise<void>;
-  removePeer(roomId: string, peerId: string): Promise<void>;
+  /**
+   * Remove a peer. With `conn`, only if that connection still owns the entry, so a
+   * late close from an old socket can't delete what its replacement just wrote.
+   */
+  removePeer(roomId: string, peerId: string, conn?: string): Promise<void>;
   /** Every stored peer for the room, possibly including stale ones (callers filter on `lastSeen`). */
   listPeers(roomId: string): Promise<PresenceRecord[]>;
 

@@ -1,29 +1,99 @@
 @import 'tailwindcss';
 
+/* `dark:` follows the resolved theme on <html data-theme>, not just the OS setting. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/*
+ * Theme tokens. Light is a paper-white with green-tinted neutrals; dark is a
+ * near-black with the same tint. Status colors are tuned per theme so they keep
+ * contrast on both backgrounds.
+ */
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+  --canvas: #ffffff;
+  --panel: #ffffff;
+  --sunken: #f3f6f4;
+  --ink: #111814;
+  --ink-2: #36423c;
+  --muted: #66726b;
+  --faint: #9aa59f;
+  --line: #e2e8e4;
+  --line-strong: #cdd7d0;
+  --brand: #0d6b4d;
+  --brand-soft: #e6f2ec;
+  --on-brand: #ffffff;
+  --lock: #0f8a57;
+  --near: #4d7c0f;
+  --warn: #9a6400;
+  --hot: #c2410c;
+  --info: #0b6aa2;
+  --bad: #b42318;
+  --shade: rgb(16 24 20 / 0.12);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: #090b0a;
+  --panel: #0e1211;
+  --sunken: #131816;
+  --ink: #e8eeea;
+  --ink-2: #c1cbc5;
+  --muted: #89958e;
+  --faint: #5b6761;
+  --line: #1c2421;
+  --line-strong: #2a3430;
+  --brand: #34d399;
+  --brand-soft: #0f2a20;
+  --on-brand: #04130d;
+  --lock: #34d399;
+  --near: #bef264;
+  --warn: #fbbf24;
+  --hot: #fdba74;
+  --info: #7dd3fc;
+  --bad: #f87171;
+  --shade: rgb(0 0 0 / 0.6);
+}
+
 /* Geist via next/font (layout.tsx sets --font-geist-* on <html>). */
 @theme inline {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-}
-
-@theme {
-  --color-ink: #09090b;
-  --color-card: #18181b;
-  --color-line: #27272a;
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-on-brand: var(--on-brand);
+  --color-lock: var(--lock);
+  --color-near: var(--near);
+  --color-warn: var(--warn);
+  --color-hot: var(--hot);
+  --color-info: var(--info);
+  --color-bad: var(--bad);
+  --color-shade: var(--shade);
 }
 
 @layer base {
   html {
-    color-scheme: dark;
     -webkit-tap-highlight-color: transparent;
     -webkit-text-size-adjust: 100%;
   }
   body {
-    @apply bg-ink font-sans text-zinc-200 antialiased;
+    @apply bg-canvas font-sans text-ink antialiased;
     min-height: 100dvh;
+    transition:
+      background-color 0.2s ease,
+      color 0.2s ease;
   }
   ::selection {
-    @apply bg-emerald-400/30 text-white;
+    @apply bg-brand/25 text-ink;
   }
   button {
     cursor: pointer;
@@ -32,25 +102,25 @@
     cursor: not-allowed;
   }
   :focus-visible {
-    @apply outline-2 outline-offset-2 outline-emerald-400/70;
+    @apply outline-2 outline-offset-2 outline-brand/70;
   }
 }
 
 @layer components {
   .card {
-    @apply rounded-xl border border-line bg-card;
+    @apply rounded-xl border border-line bg-panel;
   }
   .btn {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-zinc-900 px-3.5 text-sm font-medium text-zinc-200 transition-colors select-none hover:border-zinc-700 hover:bg-zinc-800 active:bg-zinc-800/70 disabled:opacity-40 disabled:hover:bg-zinc-900;
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-sunken px-3.5 text-sm font-medium text-ink transition-colors select-none hover:border-line-strong hover:bg-line active:bg-line disabled:opacity-40 disabled:hover:bg-sunken;
   }
   .btn-primary {
-    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-zinc-100 px-3.5 text-sm font-semibold text-zinc-950 transition-colors select-none hover:bg-white active:bg-zinc-300 disabled:opacity-40 disabled:hover:bg-zinc-100;
+    @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-ink px-3.5 text-sm font-semibold text-canvas transition-colors select-none hover:bg-ink-2 active:bg-ink-2 disabled:opacity-40 disabled:hover:bg-ink;
   }
   .icon-btn {
-    @apply inline-flex size-10 items-center justify-center rounded-lg border border-line bg-zinc-900 text-zinc-300 transition-colors select-none hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-40;
+    @apply inline-flex size-10 items-center justify-center rounded-lg border border-line bg-sunken text-ink-2 transition-colors select-none hover:border-line-strong hover:bg-line hover:text-ink disabled:opacity-40;
   }
   .label {
-    @apply font-mono text-[11px] tracking-[0.14em] text-zinc-500 uppercase;
+    @apply font-mono text-[11px] tracking-[0.14em] text-muted uppercase;
   }
 }
 
@@ -66,10 +136,14 @@
 @keyframes lock-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgb(52 211 153 / 0.55), 0 0 10px 1px rgb(52 211 153 / 0.6);
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--lock) 55%, transparent),
+      0 0 10px 1px color-mix(in srgb, var(--lock) 60%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 4px rgb(52 211 153 / 0), 0 0 14px 2px rgb(52 211 153 / 0.35);
+    box-shadow:
+      0 0 0 4px color-mix(in srgb, var(--lock) 0%, transparent),
+      0 0 14px 2px color-mix(in srgb, var(--lock) 35%, transparent);
   }
 }
 .lock-glow {
@@ -94,5 +168,8 @@
   .lock-glow,
   .ring-out {
     animation: none;
+  }
+  body {
+    transition: none;
   }
 }

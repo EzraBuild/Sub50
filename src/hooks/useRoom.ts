@@ -26,13 +26,19 @@ export function useRoom(roomId: string, username: string) {
           setLanAddresses(msg.lanAddresses);
           break;
         case 'SYNC_STATE':
-          setState(msg.state);
-          break;
-        case 'QUEUE_UPDATED':
-          setState((prev) => (prev && prev.roomId === msg.roomId ? { ...prev, queue: msg.queue } : prev));
+          // With several server instances, broadcasts can arrive out of order;
+          // never step back to an older version of the same room.
+          setState((prev) =>
+            prev && prev.roomId === msg.state.roomId && prev.epoch === msg.state.epoch && msg.state.seq < prev.seq
+              ? prev
+              : msg.state,
+          );
           break;
         case 'PEERS':
           setPeers(msg.peers);
+          break;
+        case 'PEER_UPDATE':
+          setPeers((prev) => prev.map((p) => (p.id === msg.peer.id ? msg.peer : p)));
           break;
         case 'ERROR':
           setToast({ id: Date.now(), message: msg.message });

@@ -30,7 +30,7 @@ export interface EngineContext {
 
 export type Outcome =
   /** Commit `state`. If `resolveTitle` is set, look that video's title up and apply it later. */
-  | { kind: 'changed'; state: RoomState; queueOnly: boolean; resolveTitle?: string }
+  | { kind: 'changed'; state: RoomState; resolveTitle?: string }
   /** Nothing to commit. `resend`: reply to the sender with the current state. */
   | { kind: 'unchanged'; resend: boolean }
   | { kind: 'error'; message: string };
@@ -38,9 +38,10 @@ export type Outcome =
 const NOT_A_LINK = 'That does not look like a YouTube link.';
 const unchanged = (resend = false): Outcome => ({ kind: 'unchanged', resend });
 
-export function createRoom(roomId: string, hostId: string, now: number): RoomState {
+export function createRoom(roomId: string, hostId: string, now: number, epoch: string): RoomState {
   return {
     roomId,
+    epoch,
     videoId: null,
     title: null,
     trackId: null,
@@ -60,10 +61,9 @@ export function positionAt(s: RoomState, now: number): number {
 
 export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineContext): Outcome {
   const s = structuredClone(state);
-  const commit = (queueOnly = false, resolveTitle?: string): Outcome => ({
+  const commit = (resolveTitle?: string): Outcome => ({
     kind: 'changed',
     state: { ...s, seq: state.seq + 1 },
-    queueOnly,
     ...(resolveTitle ? { resolveTitle } : {}),
   });
   const startTrack = (item: Pick<QueueItem, 'videoId' | 'title'>) => {
@@ -80,7 +80,7 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
       const videoId = parseYouTubeId(cmd.url);
       if (!videoId) return { kind: 'error', message: NOT_A_LINK };
       startTrack({ videoId, title: '' });
-      return commit(false, videoId);
+      return commit(videoId);
     }
 
     case 'PLAY': {
@@ -116,16 +116,16 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
       // Nothing playing yet: "+ Queue" should just start the track.
       if (!s.videoId) {
         startTrack(item);
-        return commit(false, item.title ? undefined : videoId);
+        return commit(item.title ? undefined : videoId);
       }
       s.queue.push(item);
-      return commit(true, item.title ? undefined : videoId);
+      return commit(item.title ? undefined : videoId);
     }
 
     case 'QUEUE_REMOVE': {
       const before = s.queue.length;
       s.queue = s.queue.filter((q) => q.id !== cmd.itemId);
-      return s.queue.length === before ? unchanged() : commit(true);
+      return s.queue.length === before ? unchanged() : commit();
     }
 
     case 'QUEUE_PLAY': {
@@ -133,7 +133,7 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
       if (idx === -1) return unchanged();
       const [item] = s.queue.splice(idx, 1);
       startTrack(item!);
-      return commit(false, item!.title ? undefined : item!.videoId);
+      return commit(item!.title ? undefined : item!.videoId);
     }
 
     case 'TRACK_ENDED': {
@@ -142,7 +142,7 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
       const next = s.queue.shift();
       if (next) {
         startTrack(next);
-        return commit(false, next.title ? undefined : next.videoId);
+        return commit(next.title ? undefined : next.videoId);
       }
       // Queue exhausted: park at the end of the track.
       s.lastTimestamp = positionAt(s, ctx.now);
@@ -157,18 +157,15 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
  * Fills in a resolved title for the current track and any queued copies that
  * still lack one. Returns null when nothing needed it (e.g. the track moved on).
  */
-export function applyTitle(state: RoomState, videoId: string, title: string): { state: RoomState; queueOnly: boolean } | null {
+export function applyTitle(state: RoomState, videoId: string, title: string): RoomState | null {
   const currentNeeds = state.videoId === videoId && !state.title;
   const queueNeeds = state.queue.some((q) => q.videoId === videoId && !q.title);
   if (!currentNeeds && !queueNeeds) return null;
   return {
-    state: {
-      ...state,
-      title: currentNeeds ? title : state.title,
-      queue: state.queue.map((q) => (q.videoId === videoId && !q.title ? { ...q, title } : q)),
-      seq: state.seq + 1,
-    },
-    queueOnly: !currentNeeds,
+    ...state,
+    title: currentNeeds ? title : state.title,
+    queue: state.queue.map((q) => (q.videoId === videoId && !q.title ? { ...q, title } : q)),
+    seq: state.seq + 1,
   };
 }
 

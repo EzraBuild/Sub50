@@ -18,17 +18,17 @@ function changed(out: Outcome): RoomState {
 type WithoutRoom<T> = T extends unknown ? Omit<T, 'roomId'> : never;
 const run = (s: RoomState, cmd: WithoutRoom<RoomCommand>, now = NOW) =>
   applyCommand(s, { roomId: s.roomId, ...cmd } as RoomCommand, ctx(now));
-const playing = () => changed(run(createRoom('jam', 'h', NOW), { type: 'CHANGE_VIDEO', url: A }));
+const playing = () => changed(run(createRoom('jam', 'h', NOW, 'e1'), { type: 'CHANGE_VIDEO', url: A }));
 
 test('CHANGE_VIDEO resets the playhead, schedules a synchronized start, asks for a title', () => {
-  const out = run(createRoom('jam', 'h', NOW), { type: 'CHANGE_VIDEO', url: A });
+  const out = run(createRoom('jam', 'h', NOW, 'e1'), { type: 'CHANGE_VIDEO', url: A });
   const s = changed(out);
   assert.deepEqual(
     { videoId: s.videoId, isPlaying: s.isPlaying, t: s.lastTimestamp, at: s.updatedAt, seq: s.seq },
     { videoId: 'aaaaaaaaaaa', isPlaying: true, t: 0, at: NOW + SYNC.TRACK_START_DELAY_MS, seq: 1 },
   );
   assert.equal(out.kind === 'changed' && out.resolveTitle, 'aaaaaaaaaaa');
-  assert.deepEqual(run(createRoom('jam', 'h', NOW), { type: 'CHANGE_VIDEO', url: 'nope' }), {
+  assert.deepEqual(run(createRoom('jam', 'h', NOW, 'e1'), { type: 'CHANGE_VIDEO', url: 'nope' }), {
     kind: 'error',
     message: 'That does not look like a YouTube link.',
   });
@@ -50,15 +50,14 @@ test('PLAY while already playing never re-anchors the room; it asks to resend st
   assert.deepEqual(run(playing(), { type: 'PLAY', timestamp: 99 }), { kind: 'unchanged', resend: true });
 });
 
-test('queue: add starts playback when idle, otherwise appends (queue-only change)', () => {
-  const idle = createRoom('jam', 'h', NOW);
+test('queue: add starts playback when idle, otherwise appends', () => {
+  const idle = createRoom('jam', 'h', NOW, 'e1');
   const started = changed(run(idle, { type: 'QUEUE_ADD', url: A }));
   assert.equal(started.videoId, 'aaaaaaaaaaa');
   assert.equal(started.queue.length, 0);
 
   const out = run(started, { type: 'QUEUE_ADD', url: B, title: 'B side' });
   const s = changed(out);
-  assert.equal(out.kind === 'changed' && out.queueOnly, true);
   assert.equal(out.kind === 'changed' && out.resolveTitle, undefined, 'title supplied: no lookup');
   assert.deepEqual(s.queue.map((q) => [q.videoId, q.title, q.addedBy]), [['bbbbbbbbbbb', 'B side', 'Ada']]);
 });
@@ -93,18 +92,18 @@ test('inputs are never mutated', () => {
   assert.deepEqual(before, snapshot);
 });
 
-test('applyTitle fills only missing titles and reports whether the deck changed', () => {
+test('applyTitle fills only missing titles', () => {
   const s = changed(run(playing(), { type: 'QUEUE_ADD', url: A }));
   const out = applyTitle(s, 'aaaaaaaaaaa', 'Song A')!;
-  assert.equal(out.state.title, 'Song A');
-  assert.equal(out.state.queue[0]!.title, 'Song A');
-  assert.equal(out.queueOnly, false);
-  assert.equal(out.state.seq, s.seq + 1);
-  assert.equal(applyTitle(out.state, 'aaaaaaaaaaa', 'Other'), null, 'already titled');
+  assert.equal(out.title, 'Song A');
+  assert.equal(out.queue[0]!.title, 'Song A');
+  assert.equal(out.seq, s.seq + 1);
+  assert.equal(applyTitle(out, 'aaaaaaaaaaa', 'Other'), null, 'already titled');
 });
 
 test('withHost only commits a real change', () => {
-  const s = createRoom('jam', 'h', NOW);
+  const s = createRoom('jam', 'h', NOW, 'e1');
+  assert.equal(s.epoch, 'e1');
   assert.equal(withHost(s, 'h'), null);
   assert.deepEqual([withHost(s, 'x')!.hostId, withHost(s, 'x')!.seq], ['x', 1]);
 });

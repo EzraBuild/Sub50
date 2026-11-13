@@ -13,7 +13,7 @@ export const STATUS_META: Record<SyncStatus, { label: string; dot: string; text:
   offline: { label: 'OFFLINE', dot: 'bg-bad', text: 'text-bad', pulse: true },
 };
 
-const SHOWS_DRIFT: ReadonlySet<SyncStatus> = new Set(['locked', 'tolerant', 'correcting', 'seeking']);
+export const SHOWS_DRIFT: ReadonlySet<SyncStatus> = new Set(['locked', 'tolerant', 'correcting', 'seeking']);
 
 export function StatusDot({ status, className = '' }: { status: SyncStatus; className?: string }) {
   const m = STATUS_META[status];
@@ -24,26 +24,21 @@ export function StatusDot({ status, className = '' }: { status: SyncStatus; clas
   );
 }
 
+/** Compact live readout for the header strip: dot · drift · status · rtt. */
 export function TelemetryPill({ status, driftMs, rttMs }: { status: SyncStatus; driftMs: number | null; rttMs: number | null }) {
   const m = STATUS_META[status];
   const showDrift = driftMs !== null && SHOWS_DRIFT.has(status);
   return (
     <div
-      className="flex h-8 items-center gap-2 rounded-full border border-line bg-sunken/80 pr-3 pl-2.5 font-mono text-[11px] tracking-wide whitespace-nowrap"
+      className="flex items-center gap-2 font-mono text-[11px] tracking-[0.06em] whitespace-nowrap"
       role="status"
       aria-live="polite"
       title="Drift = how far this device is from the room timeline. RTT = round trip to the sync server."
     >
       <StatusDot status={status} />
-      {showDrift && <span className="text-ink tabular-nums">{Math.abs(driftMs)}ms</span>}
-      {showDrift && <span className="text-faint">·</span>}
-      <span className={m.text}>{m.label}</span>
-      {rttMs !== null && (
-        <span className="hidden items-center gap-2 text-muted sm:flex">
-          <span className="h-3 w-px bg-line-strong" />
-          <span className="tabular-nums">rtt {rttMs}ms</span>
-        </span>
-      )}
+      {showDrift && <span className="text-[12px] text-ink tabular-nums">{Math.abs(driftMs)}ms</span>}
+      <span className={`${m.text} ${showDrift ? 'hidden sm:inline' : ''}`}>{m.label}</span>
+      {rttMs !== null && <span className="hidden text-faint tabular-nums lg:inline">rtt {rttMs}ms</span>}
     </div>
   );
 }

@@ -3,7 +3,6 @@
 import { Show, SignInButton, UserButton, useUser } from '@clerk/nextjs';
 import { useEffect } from 'react';
 import { authEnabled } from '../lib/auth-config';
-import { useHistory } from '../hooks/useHistory';
 import { HistoryIcon } from './icons';
 
 /** The account's display name, or null while loading / signed out. */
@@ -33,16 +32,13 @@ export function AccountButton() {
   );
 }
 
-/** Clerk's account menu, plus a way into your listening history. */
+/** Clerk's account menu, plus a way to your activity page. */
 function AccountMenu() {
-  const history = useHistory();
   return (
     <UserButton>
-      {history.enabled && (
-        <UserButton.MenuItems>
-          <UserButton.Action label="Listening history" labelIcon={<HistoryIcon size={16} />} onClick={history.open} />
-        </UserButton.MenuItems>
-      )}
+      <UserButton.MenuItems>
+        <UserButton.Link label="Your activity" labelIcon={<HistoryIcon size={16} />} href="/me" />
+      </UserButton.MenuItems>
     </UserButton>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRoom } from '../hooks/useRoom';
 import { useMediaSession } from '../hooks/useMediaSession';
 import { useChatNotifications } from '../hooks/useChatNotifications';
@@ -8,9 +8,7 @@ import { useYouTubeSync } from '../hooks/useYouTubeSync';
 import { loadName, saveName, shareUrl } from '../lib/identity';
 import { authEnabled } from '../lib/auth-config';
 import { FavoritesProvider } from '../hooks/useFavorites';
-import { HistoryProvider } from '../hooks/useHistory';
 import { HistoryTracker } from '../hooks/useListeningTracker';
-import { HistoryPanel } from './History';
 import { AccountNameSync } from './Account';
 import { AudioDeck } from './AudioDeck';
 import { Chat } from './Chat';
@@ -59,6 +57,20 @@ export default function Sub50App({ roomId }: { roomId: string }) {
   }, [toast]);
 
   const link = useMemo(() => shareUrl(roomId, lanAddresses), [roomId, lanAddresses]);
+
+  // "Listen" links (/?room=…&play=<id>): once you're in, play it (or queue it if something's on), then tidy the URL.
+  const playParam = useRef(new URLSearchParams(location.search).get('play'));
+  useEffect(() => {
+    const id = playParam.current;
+    if (!id || !entered || !connected || !state) return;
+    playParam.current = null;
+    const url = new URL(location.href);
+    url.searchParams.delete('play');
+    history.replaceState(null, '', url);
+    if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return;
+    const yt = `https://youtu.be/${id}`;
+    send(state.videoId ? actions.queueAdd(yt) : actions.changeVideo(yt));
+  });
 
   // Runs inside the gate's tap: unlock audio synchronously, then reveal the app.
   const enter = useCallback(
@@ -227,7 +239,6 @@ export default function Sub50App({ roomId }: { roomId: string }) {
       {authEnabled && entered && <AccountNameSync onName={setName} />}
       {/* Your visit is logged to your account's history (only sent while signed in). */}
       {authEnabled && entered && <HistoryTracker roomId={roomId} state={state} peers={peers} selfId={selfId} selfName={name} messages={messages} serverNow={() => client.clock.serverNow()} />}
-      {authEnabled && <HistoryPanel disabled={!connected} onQueue={(videoId, title) => send(actions.queueAdd(`https://youtu.be/${videoId}`, title))} />}
       <DropZone
         enabled={entered && connected}
         onPlayNow={(url) => send(actions.changeVideo(url))}
@@ -237,12 +248,6 @@ export default function Sub50App({ roomId }: { roomId: string }) {
     </div>
   );
 
-  // Favorites and history need an account; without Clerk on this server the providers are skipped entirely.
-  return authEnabled ? (
-    <FavoritesProvider onError={notify}>
-      <HistoryProvider onError={notify}>{page}</HistoryProvider>
-    </FavoritesProvider>
-  ) : (
-    page
-  );
+  // Favorites need an account; without Clerk on this server the provider is skipped entirely.
+  return authEnabled ? <FavoritesProvider onError={notify}>{page}</FavoritesProvider> : page;
 }

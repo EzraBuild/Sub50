@@ -6,11 +6,6 @@ import type { ChatMessage, Peer, RoomState } from '../shared/protocol';
 import { getSessionId } from '../lib/identity';
 import { ListeningTracker } from '../lib/listening';
 
-const flushers = new Set<() => Promise<void>>();
-
-/** Sends the visit in progress now (used before showing history, so it's included). */
-export const flushListening = () => Promise.all([...flushers].map((f) => f())).then(() => {});
-
 const TICK_MS = 5_000;
 const SEND_EVERY_MS = 60_000;
 
@@ -70,7 +65,6 @@ export function HistoryTracker({ roomId, state, peers, selfId, selfName, message
     };
 
     const flush = () => send(false);
-    flushers.add(flush);
     const ticker = setInterval(tick, TICK_MS);
     const sender = setInterval(flush, SEND_EVERY_MS);
     const onHide = () => document.visibilityState === 'hidden' && void send(true);
@@ -78,7 +72,6 @@ export function HistoryTracker({ roomId, state, peers, selfId, selfName, message
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', onPageHide);
     return () => {
-      flushers.delete(flush);
       clearInterval(ticker);
       clearInterval(sender);
       document.removeEventListener('visibilitychange', onHide);

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRoom } from '../hooks/useRoom';
+import { useMediaSession } from '../hooks/useMediaSession';
 import { useYouTubeSync } from '../hooks/useYouTubeSync';
 import { loadName, saveName, shareUrl } from '../lib/identity';
 import { AudioDeck } from './AudioDeck';
@@ -97,6 +98,13 @@ export default function Sub50App({ roomId }: { roomId: string }) {
   const voteSkip = () => state?.trackId && connected && send(actions.voteSkip(state.trackId, !skip.mine));
 
   const [helpOpen, setHelpOpen] = useState(false);
+  // Lock screen / notification controls act on the whole room (where the browser routes them to us).
+  useMediaSession(state, roomId, peers.length, {
+    play: () => state?.isPlaying === false && togglePlay(),
+    pause: () => state?.isPlaying && togglePlay(),
+    next: voteSkip,
+  });
+
   useShortcuts(entered, {
     togglePlay,
     resync: sync.resync,

@@ -11,6 +11,12 @@ function accountName(user: ReturnType<typeof useUser>['user']): string | null {
   return user.fullName || user.username || user.firstName || user.primaryEmailAddress?.emailAddress.split('@')[0] || null;
 }
 
+/** The signed-in account's display name (null while loading or signed out). Needs ClerkProvider. */
+export function useAccountName(): string | null {
+  const { user, isLoaded } = useUser();
+  return isLoaded ? accountName(user) : null;
+}
+
 /** Header cell: "Sign in" or the account menu. Renders nothing when accounts are off. */
 export function AccountButton() {
   if (!authEnabled) return null;

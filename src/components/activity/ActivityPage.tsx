@@ -8,20 +8,20 @@ import { newRoomId } from '../../shared/room';
 import { authEnabled } from '../../lib/auth-config';
 import { formatMinutes, formatWhen, listenUrl, summarizeTracks } from '../../lib/activity';
 import { FavoritesProvider } from '../../hooks/useFavorites';
-import { AccountButton } from '../Account';
 import { Avatar } from '../Avatar';
 import { FavoriteButton } from '../FavoriteButton';
 import { ToastView } from '../Gate';
-import { LogoMark, PlayIcon } from '../icons';
-import { ThemeToggle } from '../ThemeToggle';
+import { PlayIcon } from '../icons';
+import { PlaylistsTab } from './PlaylistsTab';
 import { RoomsTab, personId } from './RoomsTab';
+import { TopBar } from './TopBar';
 
 interface HistoryData {
   sessions: ListeningSession[];
   people: PersonSummary[];
 }
 
-const TABS = ['rooms', 'songs', 'people'] as const;
+const TABS = ['rooms', 'songs', 'playlists', 'people'] as const;
 type Tab = (typeof TABS)[number];
 const tabFromHash = (): Tab => (TABS as readonly string[]).includes(location.hash.slice(1)) ? (location.hash.slice(1) as Tab) : 'rooms';
 
@@ -33,31 +33,6 @@ function Empty({ title, children }: { title: string; children: ReactNode }) {
         <div className="mt-2 text-[13px] text-muted">{children}</div>
       </div>
     </div>
-  );
-}
-
-function TopBar() {
-  return (
-    <header className="sticky top-0 z-30 border-b border-line bg-canvas/80 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-[900px] items-stretch border-line min-[901px]:border-x">
-        <a href="/" className="flex items-center gap-2.5 px-4 sm:px-5" aria-label="Sub50 (new room)">
-          <LogoMark size={20} />
-          <span className="text-[15px] font-semibold tracking-tight text-ink">
-            Sub<span className="text-lock">50</span>
-          </span>
-        </a>
-        <div className="ml-auto flex items-stretch">
-          <div className="cell px-1.5 sm:px-2">
-            <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-sunken hover:text-ink" />
-          </div>
-          {authEnabled && (
-            <div className="cell px-1.5 sm:px-2">
-              <AccountButton />
-            </div>
-          )}
-        </div>
-      </div>
-    </header>
   );
 }
 
@@ -143,7 +118,7 @@ function SignedInActivity({ notify }: { notify: (message: string) => void }) {
       .catch(() => notify('Could not remove that session.'));
   };
 
-  const counts = data ? { rooms: data.sessions.length, songs: summarizeTracks(data.sessions).length, people: data.people.length } : null;
+  const counts: Partial<Record<Tab, number>> | null = data ? { rooms: data.sessions.length, songs: summarizeTracks(data.sessions).length, people: data.people.length } : null;
 
   return (
     <>
@@ -158,11 +133,13 @@ function SignedInActivity({ notify }: { notify: (message: string) => void }) {
             className={`rounded-md px-2.5 py-1.5 font-mono text-[11.5px] tracking-[0.04em] uppercase transition-colors ${tab === t ? 'bg-ink text-canvas' : 'text-muted hover:bg-sunken hover:text-ink'}`}
           >
             {t}
-            {counts && <span className="ml-1.5 opacity-60">{counts[t]}</span>}
+            {counts?.[t] !== undefined && <span className="ml-1.5 opacity-60">{counts[t]}</span>}
           </button>
         ))}
       </div>
-      {!data ? (
+      {tab === 'playlists' ? (
+        <PlaylistsTab notify={notify} />
+      ) : !data ? (
         <p className="label p-6">loading…</p>
       ) : tab === 'rooms' ? (
         data.sessions.length ? (
@@ -212,7 +189,7 @@ export default function ActivityPage() {
           <p className="label">activity</p>
           <h1 className="mt-3 text-[30px] leading-[1.1] font-semibold tracking-[-0.03em] text-ink sm:text-[38px]">
             Your listening.
-            <span className="text-faint"> Rooms, people, songs and chat.</span>
+            <span className="text-faint"> Rooms, songs, playlists, people and chat.</span>
           </h1>
         </section>
         {authEnabled ? (

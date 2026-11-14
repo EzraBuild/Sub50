@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { RoomState } from '../shared/protocol';
+import { withUnread } from '../lib/notify';
 
 interface Handlers {
   play: () => void;
@@ -19,7 +20,7 @@ interface Handlers {
  * We deliberately don't play a silent <audio> in the page to steal the session:
  * on iOS a second playing media element can pause the YouTube audio.
  */
-export function useMediaSession(state: RoomState | null, roomId: string, listeners: number, handlers: Handlers): void {
+export function useMediaSession(state: RoomState | null, roomId: string, listeners: number, handlers: Handlers, unread = 0): void {
   const ref = useRef(handlers);
   ref.current = handlers;
 
@@ -27,10 +28,10 @@ export function useMediaSession(state: RoomState | null, roomId: string, listene
   const playing = !!state?.isPlaying;
   const videoId = state?.videoId ?? null;
 
-  // Tab title: useful on desktop too, and works everywhere.
+  // Tab title: useful on desktop too, and works everywhere. Unread chat shows as "(3) …".
   useEffect(() => {
-    document.title = title ? `${playing ? '▶' : '❚❚'} ${title} — Sub50` : 'Sub50';
-  }, [title, playing]);
+    document.title = withUnread(title ? `${playing ? '▶' : '❚❚'} ${title} — Sub50` : 'Sub50', unread);
+  }, [title, playing, unread]);
 
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;

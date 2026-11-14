@@ -14,16 +14,18 @@ export interface SongSummary {
 export function summarizeTracks(sessions: ListeningSession[]): SongSummary[] {
   const byId = new Map<string, SongSummary>();
   for (const s of sessions) {
-    for (const t of s.tracks) {
+    s.tracks.forEach((t, i) => {
       const cur = byId.get(t.videoId) ?? { videoId: t.videoId, title: '', plays: 0, lastAt: 0, lastRoom: s.roomId };
       cur.plays += 1;
-      if (s.endedAt >= cur.lastAt) {
-        cur.lastAt = s.endedAt;
+      // Tracks are in play order, so a later one in the same session is more recent.
+      const at = s.endedAt + i / 1000;
+      if (at >= cur.lastAt) {
+        cur.lastAt = at;
         cur.lastRoom = s.roomId;
       }
       cur.title ||= t.title; // keep the first real title seen
       byId.set(t.videoId, cur);
-    }
+    });
   }
   return [...byId.values()].sort((a, b) => b.lastAt - a.lastAt);
 }

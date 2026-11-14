@@ -43,6 +43,7 @@ export function UrlBar({ disabled, onPlayNow, onQueue }: Props) {
             if (invalid) setInvalid(false);
           }}
           placeholder="youtube.com/watch?v=… · youtu.be/… · shorts · music"
+          id="link-input"
           aria-label="YouTube URL"
           aria-invalid={invalid}
           className={`h-12 w-full rounded-lg border bg-panel pr-3.5 pl-10 font-mono text-[13px] text-ink shadow-sm shadow-shade/30 transition-colors placeholder:text-faint focus:outline-none ${

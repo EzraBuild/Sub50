@@ -64,3 +64,14 @@ test('chat from after you entered rides along, each message sent once, in chunks
   t.markSent(next);
   assert.equal(t.pending()!.chat.length, 100 - CHAT_PER_SEND, 'the rest next time');
 });
+
+test('after signing in mid-visit, everything is sent again (it went to the device before)', () => {
+  const t = new ListeningTracker('sess-0001-abcd', 'jam', () => 'Me', 0);
+  t.addChat([{ id: 'a', peerId: 'bo', name: 'Bo', text: 'hi', at: 5 }], 'me', 0);
+  t.tick(70_000, { playing: true, videoId: V1, title: 'x', others: ['Bo'] });
+  t.markSent(t.pending()!);
+  assert.equal(t.pending(), null);
+  t.resetSent();
+  const again = t.pending()!;
+  assert.deepEqual([again.minutes, again.chat.map((m) => m.id)], [1.2, ['a']]);
+});

@@ -87,6 +87,12 @@ export class ListeningTracker {
     return sessionKey(s) === this.sentKey && chat.length === 0 ? null : { ...s, chat };
   }
 
+  /** Forget what was sent (e.g. it went to the device, and now you're signed in): the next send carries everything. */
+  resetSent(): void {
+    this.sentKey = '';
+    this.sentChat.clear();
+  }
+
   markSent(s: ListeningSession & { chat?: SessionChatMessage[] }): void {
     this.sentKey = sessionKey(s);
     for (const m of s.chat ?? []) this.sentChat.add(m.id);

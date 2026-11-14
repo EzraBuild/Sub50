@@ -11,7 +11,7 @@ import { LIMITS } from '../shared/protocol';
 import { authEnabled } from '../lib/auth-config';
 import { FavoritesProvider } from '../hooks/useFavorites';
 import { HistoryTracker } from '../hooks/useListeningTracker';
-import { AccountNameSync } from './Account';
+import { AccountNameSync, GuestHistoryMover } from './Account';
 import { AudioDeck } from './AudioDeck';
 import { Chat } from './Chat';
 import { Cross } from './Frame';
@@ -260,6 +260,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
       <ShortcutSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
       {/* Signing in mid-session renames you in the room. */}
       {authEnabled && entered && <AccountNameSync onName={setName} />}
+      {authEnabled && <GuestHistoryMover notify={notify} />}
       {/* Your visit goes to your activity: your account when signed in, otherwise this device. */}
       {entered && <HistoryTracker roomId={roomId} state={state} peers={peers} selfId={selfId} selfName={name} messages={messages} serverNow={() => client.clock.serverNow()} />}
       <DropZone

@@ -1,6 +1,7 @@
-import type { RefObject } from 'react';
+import { useCallback, useRef, type RefObject } from 'react';
+import { groove, grooveLevels, type Groove } from '../lib/beat';
 import type { Reaction, RoomState } from '../shared/protocol';
-import { thumbnailUrl } from '../shared/youtube';
+import { DotMatrix, type LevelSource } from './DotMatrix';
 import { FavoriteButton } from './FavoriteButton';
 import { SectionHead } from './Frame';
 import { HeadphonesIcon, NextIcon, PauseIcon, PlayIcon, ResyncIcon, VideoIcon, VideoOffIcon } from './icons';
@@ -27,25 +28,21 @@ interface Props {
   onReact: (emoji: Reaction) => void;
 }
 
-/** Bar heights for the audio-only equalizer (fixed, so it never jumps between renders). */
-const BARS = [0.35, 0.6, 0.45, 0.8, 0.55, 0.95, 0.5, 0.7, 0.4, 0.85, 0.6, 0.3, 0.75, 0.5, 0.9, 0.45, 0.65, 0.35, 0.8, 0.55, 0.7, 0.4, 0.6, 0.3];
-
-function AudioOnlyArt({ videoId, playing }: { videoId: string; playing: boolean }) {
+/** Audio-only: a dot-matrix meter grooving to the shared playback position (same on every device). */
+function AudioOnlyArt({ videoId, playing, getPosition }: { videoId: string; playing: boolean; getPosition: () => number }) {
+  const cache = useRef<{ key: string; groove: Groove } | null>(null);
+  const source = useCallback<LevelSource>(
+    (cols) => {
+      if (!playing) return null;
+      const key = `${videoId}:${cols}`;
+      if (cache.current?.key !== key) cache.current = { key, groove: groove(videoId, cols) };
+      return grooveLevels(cache.current.groove, getPosition());
+    },
+    [videoId, playing, getPosition],
+  );
   return (
-    <div className={`relative flex h-44 items-end justify-center overflow-hidden border-b border-line sm:h-52 ${playing ? '' : 'eq-paused'}`}>
-      {/* The track's own thumbnail as a soft wash of color behind the bars. */}
-      <img src={thumbnailUrl(videoId)} alt="" className="absolute inset-0 size-full scale-125 object-cover opacity-[0.14] blur-2xl" />
-      <div aria-hidden className="dot-grid absolute inset-0 opacity-60" />
-      <div className="relative flex h-28 items-end gap-[5px] pb-8 sm:h-32">
-        {BARS.map((h, i) => (
-          <span
-            key={i}
-            className={`eq-bar w-[5px] rounded-full ${playing ? 'bg-brand' : 'bg-line-strong'}`}
-            style={{ height: `${h * 100}%`, animationDelay: `${(i * 97) % 900}ms`, animationDuration: `${900 + ((i * 53) % 500)}ms` }}
-          />
-        ))}
-      </div>
-      <span className="label absolute top-3 left-4">audio only</span>
+    <div className="h-44 border-b border-line bg-sunken px-4 pt-5 pb-3.5 sm:h-52 sm:px-6">
+      <DotMatrix source={source} label={playing ? 'audio only' : 'paused'} mode="sync" status={playing ? 'live' : 'idle'} />
     </div>
   );
 }
@@ -87,7 +84,7 @@ export function AudioDeck(props: Props) {
         <div ref={hostRef} className="yt-host absolute inset-0" />
       </div>
 
-      {hasTrack && !showVideo && <AudioOnlyArt videoId={room!.videoId!} playing={playing} />}
+      {hasTrack && !showVideo && <AudioOnlyArt videoId={room!.videoId!} playing={playing} getPosition={props.getPosition} />}
 
       {!hasTrack && (
         <div className="relative overflow-hidden border-b border-line">

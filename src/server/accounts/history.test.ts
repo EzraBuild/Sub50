@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HISTORY_MAX, MemoryHistory, handleHistory, parseSession, summarizePeople, type ListeningSession } from './history';
+import { HISTORY_MAX, MemoryHistory, SESSION_CHAT_MAX, handleHistory, parseChat, parseSession, summarizePeople, type ListeningSession } from './history';
 
 const NOW = 1_800_000_000_000;
 const session = (over: Partial<ListeningSession> = {}): ListeningSession => ({
@@ -67,4 +67,31 @@ test('history keeps the newest sessions only; delete removes one', async () => {
   assert.equal(list.at(-1)!.id, 'sess-000005', 'the oldest five were dropped');
   await handleHistory('DELETE', 'u1', store, { sessionId: list[0]!.id });
   assert.equal((await store.list('u1')).length, HISTORY_MAX - 1);
+});
+
+const chatMsg = (id: string, at: number, text = 'hi') => ({ id, name: 'Bo', text, at, mine: false });
+
+test('chat posted with a session is kept with it, de-duplicated, oldest first', async () => {
+  const store = new MemoryHistory();
+  await handleHistory('POST', 'u1', store, { body: { ...session(), chat: [chatMsg('m2', 2), chatMsg('m1', 1)] } }, NOW);
+  await handleHistory('POST', 'u1', store, { body: { ...session({ minutes: 26 }), chat: [chatMsg('m2', 2), chatMsg('m3', 3)] } }, NOW); // m2 re-sent
+  const res = await handleHistory('GET', 'u1', store, { sessionId: 'sess-0001-abcd' });
+  assert.deepEqual((res.body as { chat: { id: string }[] }).chat.map((m) => m.id), ['m1', 'm2', 'm3']);
+  assert.equal((await handleHistory('GET', 'u1', store, { sessionId: '../x' })).status, 400);
+  assert.equal(((await handleHistory('GET', 'u2', store, { sessionId: 'sess-0001-abcd' })).body as { chat: unknown[] }).chat.length, 0, 'per account');
+});
+
+test('chat is capped per session and removed with the session', async () => {
+  const store = new MemoryHistory();
+  await store.appendChat('u1', 'sess-0001-abcd', Array.from({ length: SESSION_CHAT_MAX + 30 }, (_, i) => chatMsg(`m${i}`, i)));
+  assert.equal((await store.listChat('u1', 'sess-0001-abcd')).length, SESSION_CHAT_MAX);
+  await store.upsert('u1', session());
+  await handleHistory('DELETE', 'u1', store, { sessionId: 'sess-0001-abcd' });
+  assert.equal((await store.listChat('u1', 'sess-0001-abcd')).length, 0);
+});
+
+test('parseChat drops bad messages and trims long ones', () => {
+  const parsed = parseChat([chatMsg('ok', 1), { id: 'bad id!', text: 'x', at: 1 }, { id: 'e', text: '   ', at: 1 }, { id: 'n', text: 'x', at: 'later' }, { ...chatMsg('long', 2), text: 'y'.repeat(900), mine: true }, 'junk']);
+  assert.deepEqual(parsed.map((m) => [m.id, m.text.length, m.mine]), [['ok', 2, false], ['long', 500, true]]);
+  assert.deepEqual(parseChat('nope'), []);
 });

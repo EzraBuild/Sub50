@@ -22,15 +22,33 @@ export interface ListeningSession {
   tracks: HistoryTrack[];
 }
 
+/** A chat message from a room, kept with the session you heard it in. */
+export interface SessionChatMessage {
+  id: string;
+  name: string;
+  text: string;
+  /** Server time (ms). */
+  at: number;
+  /** Sent by you. */
+  mine: boolean;
+}
+
 export interface HistoryStore {
   list(userId: string): Promise<ListeningSession[]>;
   /** Insert or replace by session id (the client re-sends the growing session). */
   upsert(userId: string, session: ListeningSession): Promise<void>;
+  /** Removes the session and its chat. */
   remove(userId: string, sessionId: string): Promise<void>;
+  /** Adds messages to a session's chat (idempotent by message id, capped). */
+  appendChat(userId: string, sessionId: string, messages: SessionChatMessage[]): Promise<void>;
+  /** Oldest first. */
+  listChat(userId: string, sessionId: string): Promise<SessionChatMessage[]>;
 }
 
 export const HISTORY_MAX = 100;
+export const SESSION_CHAT_MAX = 200;
 const SESSION_ID = /^[A-Za-z0-9_-]{8,64}$/;
+const MESSAGE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const MAX_PEOPLE = 50;
 const MAX_TRACKS = 50;
@@ -78,6 +96,25 @@ export function parseSession(body: unknown, now = Date.now()): ListeningSession 
   return { id: b.id, roomId: b.roomId, startedAt, endedAt, minutes: Math.round(minutes * 10) / 10, people, tracks };
 }
 
+/** Validates untrusted chat messages posted with a session. */
+export function parseChat(raw: unknown): SessionChatMessage[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SessionChatMessage[] = [];
+  const seen = new Set<string>();
+  for (const item of raw.slice(0, SESSION_CHAT_MAX)) {
+    if (typeof item !== 'object' || item === null) continue;
+    const { id, name, text, at, mine } = item as Record<string, unknown>;
+    const when = Number(at);
+    if (typeof id !== 'string' || !MESSAGE_ID.test(id) || seen.has(id)) continue;
+    if (typeof text !== 'string' || !text.trim() || !Number.isFinite(when)) continue;
+    seen.add(id);
+    out.push({ id, name: (typeof name === 'string' && cleanName(name)) || 'someone', text: text.slice(0, LIMITS.CHAT_MAX), at: when, mine: mine === true });
+  }
+  return out;
+}
+
+const oldestFirst = (a: SessionChatMessage, b: SessionChatMessage) => a.at - b.at;
+
 export interface PersonSummary {
   name: string;
   sessions: number;
@@ -111,6 +148,7 @@ export class RedisHistory implements HistoryStore {
   ) {}
 
   private key = (userId: string) => `${this.prefix}:user:${userId}:history`;
+  private chatKey = (userId: string, sessionId: string) => `${this.prefix}:user:${userId}:chat:${sessionId}`;
 
   async list(userId: string): Promise<ListeningSession[]> {
     const all = await this.redis.hgetall<Record<string, string>>(this.key(userId));
@@ -131,17 +169,43 @@ export class RedisHistory implements HistoryStore {
     // Keep only the newest HISTORY_MAX sessions (pruned in batches, not on every write).
     if ((await this.redis.hlen(key)) > HISTORY_MAX + 20) {
       const stale = (await this.list(userId)).slice(HISTORY_MAX).map((s) => s.id);
-      if (stale.length) await this.redis.hdel(key, ...stale);
+      if (stale.length) {
+        await this.redis.hdel(key, ...stale);
+        await this.redis.del(...stale.map((id) => this.chatKey(userId, id)));
+      }
     }
   }
 
   async remove(userId: string, sessionId: string): Promise<void> {
     await this.redis.hdel(this.key(userId), sessionId);
+    await this.redis.del(this.chatKey(userId, sessionId));
+  }
+
+  async appendChat(userId: string, sessionId: string, messages: SessionChatMessage[]): Promise<void> {
+    if (messages.length === 0) return;
+    const key = this.chatKey(userId, sessionId);
+    const room = SESSION_CHAT_MAX - (await this.redis.hlen(key));
+    if (room <= 0) return;
+    await this.redis.hset(key, Object.fromEntries(messages.slice(0, room).map((m) => [m.id, JSON.stringify(m)])));
+  }
+
+  async listChat(userId: string, sessionId: string): Promise<SessionChatMessage[]> {
+    const all = await this.redis.hgetall<Record<string, string>>(this.chatKey(userId, sessionId));
+    const out: SessionChatMessage[] = [];
+    for (const raw of Object.values(all ?? {})) {
+      try {
+        out.push(typeof raw === 'string' ? (JSON.parse(raw) as SessionChatMessage) : (raw as SessionChatMessage));
+      } catch {
+        /* skip corrupt entry */
+      }
+    }
+    return out.sort(oldestFirst);
   }
 }
 
 export class MemoryHistory implements HistoryStore {
   private readonly users = new Map<string, Map<string, ListeningSession>>();
+  private readonly chats = new Map<string, Map<string, SessionChatMessage>>();
 
   async list(userId: string): Promise<ListeningSession[]> {
     return [...(this.users.get(userId)?.values() ?? [])].sort(newestFirst);
@@ -151,11 +215,23 @@ export class MemoryHistory implements HistoryStore {
     let m = this.users.get(userId);
     if (!m) this.users.set(userId, (m = new Map()));
     m.set(session.id, structuredClone(session));
-    if (m.size > HISTORY_MAX) for (const s of (await this.list(userId)).slice(HISTORY_MAX)) m.delete(s.id);
+    if (m.size > HISTORY_MAX) for (const s of (await this.list(userId)).slice(HISTORY_MAX)) await this.remove(userId, s.id);
   }
 
   async remove(userId: string, sessionId: string): Promise<void> {
     this.users.get(userId)?.delete(sessionId);
+    this.chats.delete(`${userId}:${sessionId}`);
+  }
+
+  async appendChat(userId: string, sessionId: string, messages: SessionChatMessage[]): Promise<void> {
+    const key = `${userId}:${sessionId}`;
+    let m = this.chats.get(key);
+    if (!m) this.chats.set(key, (m = new Map()));
+    for (const msg of messages) if (m.has(msg.id) || m.size < SESSION_CHAT_MAX) m.set(msg.id, { ...msg });
+  }
+
+  async listChat(userId: string, sessionId: string): Promise<SessionChatMessage[]> {
+    return [...(this.chats.get(`${userId}:${sessionId}`)?.values() ?? [])].sort(oldestFirst);
   }
 }
 
@@ -170,6 +246,11 @@ export async function handleHistory(
   if (!userId) return { status: 401, body: { error: 'Sign in to keep a listening history.' } };
   switch (method) {
     case 'GET': {
+      // ?sessionId= → that session's chat (loaded on demand, not with the list).
+      if (input.sessionId != null) {
+        if (!SESSION_ID.test(input.sessionId)) return { status: 400, body: { error: 'Invalid sessionId.' } };
+        return { status: 200, body: { chat: await store.listChat(userId, input.sessionId) } };
+      }
       const sessions = await store.list(userId);
       return { status: 200, body: { sessions, people: summarizePeople(sessions) } };
     }
@@ -179,6 +260,7 @@ export async function handleHistory(
       // Under a minute of actual listening isn't worth remembering.
       if (session.minutes < 1) return { status: 202, body: { skipped: true } };
       await store.upsert(userId, session);
+      await store.appendChat(userId, session.id, parseChat((input.body as { chat?: unknown }).chat));
       return { status: 200, body: { ok: true } };
     }
     case 'DELETE': {

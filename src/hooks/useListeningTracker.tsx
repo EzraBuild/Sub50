@@ -2,7 +2,7 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { useEffect, useRef } from 'react';
-import type { Peer, RoomState } from '../shared/protocol';
+import type { ChatMessage, Peer, RoomState } from '../shared/protocol';
 import { getSessionId } from '../lib/identity';
 import { ListeningTracker } from '../lib/listening';
 
@@ -20,6 +20,9 @@ interface TrackerProps {
   peers: Peer[];
   selfId: string;
   selfName: string;
+  messages: ChatMessage[];
+  /** Server time: chat from before you entered isn't part of your visit. */
+  serverNow: () => number;
 }
 
 /**
@@ -27,17 +30,19 @@ interface TrackerProps {
  * (every minute, and when the tab is hidden or closed). Signing in mid-visit
  * keeps the whole visit. Mount only when accounts are enabled and you've entered.
  */
-export function HistoryTracker({ roomId, state, peers, selfId, selfName }: TrackerProps) {
+export function HistoryTracker({ roomId, state, peers, selfId, selfName, messages, serverNow }: TrackerProps) {
   const { isSignedIn } = useAuth();
-  const live = useRef({ state, peers, selfId, selfName, isSignedIn });
-  live.current = { state, peers, selfId, selfName, isSignedIn };
+  const live = useRef({ state, peers, selfId, selfName, isSignedIn, messages, serverNow });
+  live.current = { state, peers, selfId, selfName, isSignedIn, messages, serverNow };
 
   useEffect(() => {
     // One id per visit: the tab's session id plus when you entered.
     const tracker = new ListeningTracker(`${getSessionId().slice(0, 40)}-${Date.now().toString(36)}`, roomId, () => live.current.selfName, Date.now());
+    const enteredAt = live.current.serverNow();
 
     const tick = () => {
       const { state: s, peers: p, selfId: me } = live.current;
+      tracker.addChat(live.current.messages, me, enteredAt);
       tracker.tick(Date.now(), {
         playing: !!s?.isPlaying,
         videoId: s?.videoId ?? null,

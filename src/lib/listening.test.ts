@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSession } from '../server/accounts/history';
-import { ListeningTracker } from './listening';
+import { CHAT_PER_SEND, ListeningTracker } from './listening';
 
 const V1 = 'dQw4w9WgXcQ';
 const V2 = 'N9U9A4_cgyI';
@@ -45,5 +45,22 @@ test('what the tracker sends passes server validation unchanged', () => {
   const t = new ListeningTracker('AbCdEfGhIjKlMnOp-m3x9k2', 'friday-jam', () => 'Me', start);
   for (let i = 1; i <= 30; i++) t.tick(start + i * 5_000, { playing: true, videoId: i < 20 ? V1 : V2, title: 'x', others: ['Bo', 'Di'] });
   const sent = t.pending()!;
-  assert.deepEqual(parseSession(sent, start + 150_000), sent);
+  const { chat: _chat, ...session } = sent;
+  assert.deepEqual(parseSession(sent, start + 150_000), session);
+});
+
+test('chat from after you entered rides along, each message sent once, in chunks', () => {
+  const t = new ListeningTracker('sess-0001-abcd', 'jam', () => 'Me', 0);
+  const msg = (id: string, at: number, peerId = 'bo') => ({ id, peerId, name: peerId, text: `t${id}`, at });
+  t.addChat([msg('old', 900), msg('a', 1000), msg('b', 1001, 'me')], 'me', 1000); // 'old' was before you came in
+  t.tick(70_000, { playing: true, videoId: V1, title: 'x', others: [] });
+  const first = t.pending()!;
+  assert.deepEqual(first.chat.map((m) => [m.id, m.mine]), [['a', false], ['b', true]]);
+  t.markSent(first);
+  assert.equal(t.pending(), null, 'nothing new');
+  t.addChat(Array.from({ length: 100 }, (_, i) => msg(`n${i}`, 2000 + i)), 'me', 1000);
+  const next = t.pending()!;
+  assert.equal(next.chat.length, CHAT_PER_SEND, 'chunked');
+  t.markSent(next);
+  assert.equal(t.pending()!.chat.length, 100 - CHAT_PER_SEND, 'the rest next time');
 });

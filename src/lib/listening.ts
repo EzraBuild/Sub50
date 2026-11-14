@@ -1,7 +1,14 @@
-import type { ListeningSession } from '../server/accounts/history';
+import type { ListeningSession, SessionChatMessage } from '../server/accounts/history';
+import type { ChatMessage } from '../shared/protocol';
 
 /** Longest gap one tick may count: a sleeping laptop shouldn't log an hour of listening. */
 const MAX_TICK_MS = 70_000;
+/** Chat kept per visit (matches the server's cap). */
+const CHAT_CAP = 200;
+/** Chat per send: keeps a closing-tab beacon well under the browser's 64 KB limit. */
+export const CHAT_PER_SEND = 60;
+
+export type PendingSession = ListeningSession & { chat: SessionChatMessage[] };
 
 export interface TickInput {
   playing: boolean;
@@ -22,6 +29,8 @@ export class ListeningTracker {
   private readonly tracks = new Map<string, string>();
   /** What the server last accepted, to skip redundant writes. */
   private sentKey = '';
+  private readonly chat = new Map<string, SessionChatMessage>();
+  private readonly sentChat = new Set<string>();
 
   constructor(
     readonly id: string,
@@ -46,6 +55,14 @@ export class ListeningTracker {
     }
   }
 
+  /** Keeps the room's chat from `since` (server time, when you entered) on. */
+  addChat(messages: ChatMessage[], selfId: string, since: number): void {
+    for (const m of messages) {
+      if (m.at < since || this.chat.has(m.id) || this.chat.size >= CHAT_CAP) continue;
+      this.chat.set(m.id, { id: m.id, name: m.name, text: m.text, at: m.at, mine: m.peerId === selfId });
+    }
+  }
+
   get minutes(): number {
     return Math.round((this.playedMs / 60_000) * 10) / 10;
   }
@@ -62,15 +79,18 @@ export class ListeningTracker {
     };
   }
 
-  /** The session to send, or null if under a minute or nothing changed since the last send. */
-  pending(): ListeningSession | null {
+  /** The session (plus chat not sent yet) to send, or null if under a minute or nothing changed. */
+  pending(): PendingSession | null {
     if (this.minutes < 1) return null;
     const s = this.snapshot();
-    const key = `${s.minutes}|${s.people.length}|${s.tracks.map((t) => t.videoId + t.title).join(',')}`;
-    return key === this.sentKey ? null : s;
+    const chat = [...this.chat.values()].filter((m) => !this.sentChat.has(m.id)).slice(0, CHAT_PER_SEND);
+    return sessionKey(s) === this.sentKey && chat.length === 0 ? null : { ...s, chat };
   }
 
-  markSent(s: ListeningSession): void {
-    this.sentKey = `${s.minutes}|${s.people.length}|${s.tracks.map((t) => t.videoId + t.title).join(',')}`;
+  markSent(s: ListeningSession & { chat?: SessionChatMessage[] }): void {
+    this.sentKey = sessionKey(s);
+    for (const m of s.chat ?? []) this.sentChat.add(m.id);
   }
 }
+
+const sessionKey = (s: ListeningSession) => `${s.minutes}|${s.people.length}|${s.tracks.map((t) => t.videoId + t.title).join(',')}`;

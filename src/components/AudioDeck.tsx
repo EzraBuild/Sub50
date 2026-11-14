@@ -1,8 +1,9 @@
 import type { RefObject } from 'react';
-import type { RoomState } from '../shared/protocol';
+import type { Reaction, RoomState } from '../shared/protocol';
 import { thumbnailUrl } from '../shared/youtube';
 import { SectionHead } from './Frame';
 import { HeadphonesIcon, NextIcon, PauseIcon, PlayIcon, ResyncIcon, VideoIcon, VideoOffIcon } from './icons';
+import { FloatingReactions, ReactionBar, type FloatingReaction } from './Reactions';
 import { Scrubber } from './Scrubber';
 
 interface Props {
@@ -19,6 +20,8 @@ interface Props {
   onSeek: (t: number) => void;
   onResync: () => void;
   onNext: () => void;
+  reactions: FloatingReaction[];
+  onReact: (emoji: Reaction) => void;
 }
 
 /** Bar heights for the audio-only equalizer (fixed, so it never jumps between renders). */
@@ -51,7 +54,8 @@ export function AudioDeck(props: Props) {
   const canControl = hasTrack && connected;
 
   return (
-    <section aria-label="Audio deck">
+    <section aria-label="Audio deck" className="relative">
+      <FloatingReactions reactions={props.reactions} />
       <SectionHead
         index="01"
         title="Deck"
@@ -142,6 +146,8 @@ export function AudioDeck(props: Props) {
             <NextIcon size={14} />
           </button>
         </div>
+
+        <ReactionBar onReact={props.onReact} disabled={!connected} />
       </div>
     </section>
   );

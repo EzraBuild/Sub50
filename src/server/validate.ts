@@ -1,4 +1,4 @@
-import { LIMITS, type ClientMessage, type SyncStatus } from '../shared/protocol';
+import { LIMITS, REACTIONS, type ClientMessage, type Reaction, type SyncStatus } from '../shared/protocol';
 
 const STATUSES: ReadonlySet<SyncStatus> = new Set<SyncStatus>([
   'idle', 'paused', 'loading', 'holding', 'locked', 'tolerant', 'correcting', 'seeking', 'blocked', 'offline',
@@ -68,6 +68,9 @@ export function parseClientMessage(raw: string): ClientMessage | null {
     case 'TRACK_ENDED': {
       const trackId = str(data.trackId, 64);
       return trackId === null ? null : { type: 'TRACK_ENDED', roomId, trackId };
+    }
+    case 'REACT': {
+      return (REACTIONS as readonly unknown[]).includes(data.emoji) ? { type: 'REACT', roomId, emoji: data.emoji as Reaction } : null;
     }
     case 'REPORT': {
       const driftMs = optNum(data.driftMs);

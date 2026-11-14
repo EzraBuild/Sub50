@@ -4,7 +4,7 @@
  * forwards broadcasts that other instances commit to its local sockets.
  */
 import { randomBytes } from 'node:crypto';
-import { LIMITS, type ClientMessage, type Peer, type RoomState, type ServerMessage, type SyncStatus } from '../shared/protocol';
+import { LIMITS, type ClientMessage, type Peer, type Reaction, type RoomState, type ServerMessage, type SyncStatus } from '../shared/protocol';
 import { parseRoomId } from '../shared/room';
 import { applyCommand, applyTitle, createRoom, isRoomCommand, withHost, type Outcome } from './engine';
 import type { Broadcast, CommitResult, Mutator, PresenceRecord, RoomStore } from './store/types';
@@ -28,6 +28,9 @@ export const PRESENCE = {
  * Telemetry fan-out is throttled. Clients REPORT every 2s, but rebroadcasting
  * each one would burn through a hosted Redis command budget for no visible gain.
  */
+/** Reactions: at most this many per listener within the window; extras are dropped silently. */
+export const REACTION_LIMIT = { MAX: 6, WINDOW_MS: 3_000 } as const;
+
 export const TELEMETRY = {
   /** Moving into or out of a steady state (locked/tolerant) goes out at most this often. */
   CLASS_CHANGE_MS: 1_000,
@@ -44,6 +47,8 @@ interface LocalPeer {
   roomId: string | null;
   presence: PresenceRecord;
   published: { at: number; status: SyncStatus; driftMs: number | null; rttMs: number | null };
+  /** Recent reaction times, for the per-listener rate limit. */
+  reactedAt: number[];
 }
 
 export interface HubOptions {
@@ -110,6 +115,7 @@ export class SyncHub {
       roomId: null,
       presence: { id: conn.id, conn: conn.id, name: 'Guest', joinedAt: now, lastSeen: now, driftMs: null, rttMs: null, status: 'idle' },
       published: { at: 0, status: 'idle', driftMs: null, rttMs: null },
+      reactedAt: [],
     });
   }
 
@@ -130,6 +136,7 @@ export class SyncHub {
     const roomId = peer.roomId;
     if (!roomId || roomId !== msg.roomId) return;
     if (msg.type === 'REPORT') return this.report(peer, roomId, msg);
+    if (msg.type === 'REACT') return this.react(peer, roomId, msg.emoji);
     if (!isRoomCommand(msg)) return;
 
     let outcome = { kind: 'unchanged', resend: false } as Outcome;
@@ -232,6 +239,14 @@ export class SyncHub {
     // Persist too, so someone joining later gets current numbers in their first PEERS
     // instead of the join-time "idle" (same throttle, so no extra traffic in steady state).
     await Promise.all([this.store.putPeer(roomId, p), this.fanOut(roomId, { type: 'PEER_UPDATE', roomId, peer: toPeer(p) })]);
+  }
+
+  private async react(peer: LocalPeer, roomId: string, emoji: Reaction): Promise<void> {
+    const now = this.now();
+    peer.reactedAt = peer.reactedAt.filter((t) => now - t < REACTION_LIMIT.WINDOW_MS);
+    if (peer.reactedAt.length >= REACTION_LIMIT.MAX) return;
+    peer.reactedAt.push(now);
+    await this.fanOut(roomId, { type: 'REACTION', roomId, id: newId(4), peerId: peer.presence.id, name: peer.presence.name, emoji });
   }
 
   private async refreshPresence(): Promise<void> {

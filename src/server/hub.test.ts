@@ -1,7 +1,7 @@
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ClientMessage, Peer, RoomState, ServerMessage } from '../shared/protocol';
-import { PRESENCE, SyncHub, TELEMETRY } from './hub';
+import { PRESENCE, REACTION_LIMIT, SyncHub, TELEMETRY } from './hub';
 import { MemoryStore } from './store/memory';
 
 const A = 'https://youtu.be/aaaaaaaaaaa';
@@ -222,4 +222,23 @@ test('someone joining later sees current telemetry, not the join-time idle', asy
   await late.join('jam', 'Late', 'session-late');
   const phone = late.peers().find((p) => p.id === 'session-phone')!;
   assert.deepEqual([phone.status, phone.driftMs, phone.rttMs], ['locked', -37, 41]);
+});
+
+test('reactions fan out to every instance and a spam burst is capped', async () => {
+  const c = cluster(2);
+  const a = c.client('a', c.hubs[0]);
+  const b = c.client('b', c.hubs[1]);
+  await a.join('jam', 'Ada', 'session-ada');
+  await b.join('jam', 'Bo', 'session-bo');
+
+  await a.send({ type: 'REACT', roomId: 'jam', emoji: '🔥' });
+  const r = b.last('REACTION')!;
+  assert.deepEqual([r.emoji, r.name, r.peerId], ['🔥', 'Ada', 'session-ada']);
+  assert.equal(a.count('REACTION'), 1, 'sender sees its own reaction once');
+
+  for (let i = 0; i < 20; i++) await a.send({ type: 'REACT', roomId: 'jam', emoji: '👏' });
+  assert.equal(b.count('REACTION'), REACTION_LIMIT.MAX, 'burst capped per window');
+  c.tick(REACTION_LIMIT.WINDOW_MS + 1);
+  await a.send({ type: 'REACT', roomId: 'jam', emoji: '🙌' });
+  assert.equal(b.count('REACTION'), REACTION_LIMIT.MAX + 1, 'allowed again after the window');
 });

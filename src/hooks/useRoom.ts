@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChatMessage, Peer, Reaction, RoomState } from '../shared/protocol';
 import type { FloatingReaction } from '../components/Reactions';
 import { getSessionId } from '../lib/identity';
@@ -108,7 +108,7 @@ export function useRoom(roomId: string, username: string) {
     [client, roomId],
   );
 
-  const notify = (message: string) => setToast({ id: Date.now(), message });
+  const notify = useCallback((message: string) => setToast({ id: Date.now(), message }), []);
 
   const typingNames = Object.values(typing).map((t) => t.name);
 

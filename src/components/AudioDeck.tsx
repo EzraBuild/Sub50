@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import type { Reaction, RoomState } from '../shared/protocol';
 import { thumbnailUrl } from '../shared/youtube';
+import { FavoriteButton } from './FavoriteButton';
 import { SectionHead } from './Frame';
 import { HeadphonesIcon, NextIcon, PauseIcon, PlayIcon, ResyncIcon, VideoIcon, VideoOffIcon } from './icons';
 import { FloatingReactions, ReactionBar, type FloatingReaction } from './Reactions';
@@ -102,12 +103,17 @@ export function AudioDeck(props: Props) {
       )}
 
       <div className="space-y-5 px-4 py-5 sm:px-6 sm:py-6">
-        <div className="min-w-0">
-          <p className="label">{hasTrack ? (playing ? 'Now playing' : 'Paused') : 'Deck idle'}</p>
-          <h2 className="mt-1.5 truncate text-xl font-semibold tracking-[-0.02em] text-ink sm:text-2xl" title={room?.title ?? undefined}>
-            {hasTrack ? room?.title || 'Loading title…' : '—'}
-          </h2>
-          {hasTrack && <p className="mt-1 font-mono text-[11px] text-faint">youtube · {room?.videoId}</p>}
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="label">{hasTrack ? (playing ? 'Now playing' : 'Paused') : 'Deck idle'}</p>
+            <h2 className="mt-1.5 truncate text-xl font-semibold tracking-[-0.02em] text-ink sm:text-2xl" title={room?.title ?? undefined}>
+              {hasTrack ? room?.title || 'Loading title…' : '—'}
+            </h2>
+            {hasTrack && <p className="mt-1 font-mono text-[11px] text-faint">youtube · {room?.videoId}</p>}
+          </div>
+          <div className="mt-5">
+            <FavoriteButton videoId={room?.videoId ?? null} title={room?.title ?? ''} />
+          </div>
         </div>
 
         {error && <p className="rounded-lg border border-bad/30 bg-bad/10 px-3 py-2 text-[13px] text-bad">{error}</p>}

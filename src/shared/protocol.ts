@@ -99,6 +99,8 @@ export type ClientMessage =
   | { type: 'PAUSE'; roomId: string; timestamp: number }
   | { type: 'SEEK'; roomId: string; timestamp: number }
   | { type: 'QUEUE_ADD'; roomId: string; url: string; title?: string }
+  /** Several tracks in one commit (a playlist). Up to LIMITS.BATCH_MAX per message. */
+  | { type: 'QUEUE_ADD_MANY'; roomId: string; items: { videoId: string; title?: string }[] }
   | { type: 'QUEUE_REMOVE'; roomId: string; itemId: string }
   | { type: 'QUEUE_PLAY'; roomId: string; itemId: string }
   | { type: 'TRACK_ENDED'; roomId: string; trackId: string }
@@ -171,4 +173,6 @@ export const LIMITS = {
   URL_MAX: 512,
   TITLE_MAX: 200,
   QUEUE_MAX: 200,
+  /** Tracks per QUEUE_ADD_MANY frame: keeps it under the 16 KB socket frame limit. */
+  BATCH_MAX: 50,
 } as const;

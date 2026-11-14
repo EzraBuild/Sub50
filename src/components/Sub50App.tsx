@@ -6,6 +6,8 @@ import { useMediaSession } from '../hooks/useMediaSession';
 import { useChatNotifications } from '../hooks/useChatNotifications';
 import { useYouTubeSync } from '../hooks/useYouTubeSync';
 import { loadName, saveName, shareUrl } from '../lib/identity';
+import { playlistApi } from '../lib/playlistApi';
+import { LIMITS } from '../shared/protocol';
 import { authEnabled } from '../lib/auth-config';
 import { FavoritesProvider } from '../hooks/useFavorites';
 import { HistoryTracker } from '../hooks/useListeningTracker';
@@ -58,18 +60,37 @@ export default function Sub50App({ roomId }: { roomId: string }) {
 
   const link = useMemo(() => shareUrl(roomId, lanAddresses), [roomId, lanAddresses]);
 
-  // "Listen" links (/?room=…&play=<id>): once you're in, play it (or queue it if something's on), then tidy the URL.
-  const playParam = useRef(new URLSearchParams(location.search).get('play'));
+  // Links that start something, once you're in: ?play=<videoId> ("Listen" in your activity) plays it,
+  // or queues it if something's on; ?playlist=<id> ("Play in a room") queues the whole playlist. Then tidy the URL.
+  const startLink = useRef(new URLSearchParams(location.search));
   useEffect(() => {
-    const id = playParam.current;
-    if (!id || !entered || !connected || !state) return;
-    playParam.current = null;
+    const play = startLink.current.get('play');
+    const playlist = startLink.current.get('playlist');
+    if ((!play && !playlist) || !entered || !connected || !state) return;
+    startLink.current = new URLSearchParams();
     const url = new URL(location.href);
     url.searchParams.delete('play');
+    url.searchParams.delete('playlist');
     history.replaceState(null, '', url);
-    if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return;
-    const yt = `https://youtu.be/${id}`;
-    send(state.videoId ? actions.queueAdd(yt) : actions.changeVideo(yt));
+    if (play && /^[A-Za-z0-9_-]{11}$/.test(play)) {
+      const yt = `https://youtu.be/${play}`;
+      send(state.videoId ? actions.queueAdd(yt) : actions.changeVideo(yt));
+    }
+    if (playlist) {
+      playlistApi
+        .get(playlist)
+        .then(async (p) => {
+          if (p.tracks.length === 0) return notify(`“${p.name}” has no songs yet.`);
+          const items = p.tracks.map((t) => ({ videoId: t.videoId, ...(t.title ? { title: t.title } : {}) }));
+          // In frames of BATCH_MAX (socket frames are small), a beat apart so they land in order.
+          for (let i = 0; i < items.length; i += LIMITS.BATCH_MAX) {
+            if (i) await new Promise((r) => setTimeout(r, 150));
+            send(actions.queueAddMany(items.slice(i, i + LIMITS.BATCH_MAX)));
+          }
+          notify(`Queued ${Math.min(items.length, LIMITS.QUEUE_MAX)} songs from “${p.name}”.`);
+        })
+        .catch(() => notify('Couldn’t load that playlist. It may be private or deleted.'));
+    }
   });
 
   // Runs inside the gate's tap: unlock audio synchronously, then reveal the app.

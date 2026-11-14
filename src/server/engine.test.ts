@@ -168,3 +168,24 @@ test('vote to skip with an empty queue stops at the current position', () => {
   const s = changed(vote(playing(), 'p1', ['p1'], true, NOW + SYNC.TRACK_START_DELAY_MS + 42_000));
   assert.deepEqual([s.isPlaying, s.lastTimestamp, s.skipVotes], [false, 42, []]);
 });
+
+test('QUEUE_ADD_MANY: an idle room starts the first track and queues the rest, in one commit', () => {
+  const idle = createRoom('jam', 'h', NOW, 'e1');
+  const out = run(idle, { type: 'QUEUE_ADD_MANY', items: [{ videoId: 'aaaaaaaaaaa' }, { videoId: 'bbbbbbbbbbb', title: 'B side' }, { videoId: 'ccccccccccc', title: 'C' }] });
+  const s = changed(out);
+  assert.equal(s.videoId, 'aaaaaaaaaaa');
+  assert.equal(s.isPlaying, true);
+  assert.deepEqual(s.queue.map((q) => [q.videoId, q.title, q.addedBy]), [['bbbbbbbbbbb', 'B side', 'Ada'], ['ccccccccccc', 'C', 'Ada']]);
+  assert.equal(s.seq, idle.seq + 1, 'one commit');
+  assert.equal(out.kind === 'changed' && out.resolveTitle, 'aaaaaaaaaaa', 'the untitled track that started gets its title looked up');
+});
+
+test('QUEUE_ADD_MANY: a playing room only queues, and stops at the queue limit', () => {
+  const p = playing();
+  const many = Array.from({ length: 50 }, (_, i) => ({ videoId: `v${String(i).padStart(10, '0')}`, title: `t${i}` }));
+  let s = p;
+  for (let i = 0; i < 4; i++) s = changed(run(s, { type: 'QUEUE_ADD_MANY', items: many }));
+  assert.equal(s.videoId, p.videoId, 'the current track keeps playing');
+  assert.equal(s.queue.length, 200);
+  assert.deepEqual(run(s, { type: 'QUEUE_ADD_MANY', items: many.slice(0, 1) }), { kind: 'error', message: 'The queue is full.' });
+});

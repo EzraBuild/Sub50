@@ -11,11 +11,11 @@ import { parseYouTubeId } from '../shared/youtube';
 
 export type RoomCommand = Extract<
   ClientMessage,
-  { type: 'CHANGE_VIDEO' | 'PLAY' | 'PAUSE' | 'SEEK' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_PLAY' | 'TRACK_ENDED' | 'VOTE_SKIP' }
+  { type: 'CHANGE_VIDEO' | 'PLAY' | 'PAUSE' | 'SEEK' | 'QUEUE_ADD' | 'QUEUE_ADD_MANY' | 'QUEUE_REMOVE' | 'QUEUE_PLAY' | 'TRACK_ENDED' | 'VOTE_SKIP' }
 >;
 
 const ROOM_COMMANDS: ReadonlySet<string> = new Set<RoomCommand['type']>([
-  'CHANGE_VIDEO', 'PLAY', 'PAUSE', 'SEEK', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_PLAY', 'TRACK_ENDED', 'VOTE_SKIP',
+  'CHANGE_VIDEO', 'PLAY', 'PAUSE', 'SEEK', 'QUEUE_ADD', 'QUEUE_ADD_MANY', 'QUEUE_REMOVE', 'QUEUE_PLAY', 'TRACK_ENDED', 'VOTE_SKIP',
 ]);
 
 export const isRoomCommand = (msg: ClientMessage): msg is RoomCommand => ROOM_COMMANDS.has(msg.type);
@@ -133,6 +133,24 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
       }
       s.queue.push(item);
       return commit(item.title ? undefined : videoId);
+    }
+
+    case 'QUEUE_ADD_MANY': {
+      // Like QUEUE_ADD for each item, in one commit; stops when the queue is full.
+      let resolve: string | undefined;
+      let added = 0;
+      for (const it of cmd.items) {
+        if (s.videoId && s.queue.length >= LIMITS.QUEUE_MAX) break;
+        const item: QueueItem = { id: ctx.newId(), videoId: it.videoId, title: it.title?.trim() ?? '', addedBy: ctx.peerName };
+        if (!s.videoId) {
+          startTrack(item);
+          if (!item.title) resolve = item.videoId;
+        } else {
+          s.queue.push(item);
+        }
+        added++;
+      }
+      return added ? commit(resolve) : { kind: 'error', message: 'The queue is full.' };
     }
 
     case 'QUEUE_REMOVE': {

@@ -7,6 +7,7 @@ import { useYouTubeSync } from '../hooks/useYouTubeSync';
 import { loadName, saveName, shareUrl } from '../lib/identity';
 import { authEnabled } from '../lib/auth-config';
 import { FavoritesProvider } from '../hooks/useFavorites';
+import { HistoryTracker } from '../hooks/useListeningTracker';
 import { AccountNameSync } from './Account';
 import { AudioDeck } from './AudioDeck';
 import { Chat } from './Chat';
@@ -219,6 +220,8 @@ export default function Sub50App({ roomId }: { roomId: string }) {
       <ShortcutSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
       {/* Signing in mid-session renames you in the room. */}
       {authEnabled && entered && <AccountNameSync onName={setName} />}
+      {/* Your visit is logged to your account's history (only sent while signed in). */}
+      {authEnabled && entered && <HistoryTracker roomId={roomId} state={state} peers={peers} selfId={selfId} selfName={name} />}
       <DropZone
         enabled={entered && connected}
         onPlayNow={(url) => send(actions.changeVideo(url))}

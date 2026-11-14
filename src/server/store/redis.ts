@@ -11,7 +11,7 @@
  * from networks that block port 6379.
  */
 import { Redis } from '@upstash/redis';
-import type { RoomState } from '../../shared/protocol';
+import type { ChatMessage, RoomState } from '../../shared/protocol';
 import type { Broadcast, CommitResult, Mutator, PresenceRecord, RoomStore } from './types';
 
 const CAS_SCRIPT = `
@@ -92,6 +92,7 @@ export class RedisStore implements RoomStore {
   private roomKey = (id: string) => `${this.prefix}:room:${id}`;
   private peersKey = (id: string) => `${this.prefix}:peers:${id}`;
   private channel = (id: string) => `${this.prefix}:ch:${id}`;
+  private chatKey = (id: string) => `${this.prefix}:chat:${id}`;
 
   async get(roomId: string): Promise<RoomState | null> {
     const raw = await this.redis.get<string>(this.roomKey(roomId));
@@ -214,12 +215,31 @@ export class RedisStore implements RoomStore {
     return peers;
   }
 
+  async appendChat(roomId: string, message: ChatMessage, keep: number): Promise<void> {
+    const key = this.chatKey(roomId);
+    // Newest first in Redis; capped and expiring with the room.
+    await this.redis.multi().lpush(key, JSON.stringify(message)).ltrim(key, 0, keep - 1).expire(key, this.roomTtl).exec();
+  }
+
+  async listChat(roomId: string): Promise<ChatMessage[]> {
+    const raw = await this.redis.lrange<string>(this.chatKey(roomId), 0, -1);
+    const messages: ChatMessage[] = [];
+    for (const r of raw) {
+      try {
+        messages.push(JSON.parse(String(r)) as ChatMessage);
+      } catch {
+        /* skip a corrupt entry */
+      }
+    }
+    return messages.reverse();
+  }
+
   async close(): Promise<void> {
     for (const close of [...this.closers]) close();
   }
 
   /** Test helper: remove everything under this store's prefix for one room. */
   async destroyRoom(roomId: string): Promise<void> {
-    await this.redis.del(this.roomKey(roomId), this.peersKey(roomId));
+    await this.redis.del(this.roomKey(roomId), this.peersKey(roomId), this.chatKey(roomId));
   }
 }

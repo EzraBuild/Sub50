@@ -1,4 +1,4 @@
-import type { Peer, RoomState } from '../../shared/protocol';
+import type { ChatMessage, Peer, RoomState } from '../../shared/protocol';
 
 /** A peer as stored for presence. `lastSeen` lets other instances drop peers whose instance died. */
 export interface PresenceRecord extends Peer {
@@ -57,6 +57,11 @@ export interface RoomStore {
   removePeer(roomId: string, peerId: string, conn?: string): Promise<void>;
   /** Every stored peer for the room, possibly including stale ones (callers filter on `lastSeen`). */
   listPeers(roomId: string): Promise<PresenceRecord[]>;
+
+  /** Append a chat message, keeping only the newest `keep`. */
+  appendChat(roomId: string, message: ChatMessage, keep: number): Promise<void>;
+  /** The room's recent messages, oldest first. */
+  listChat(roomId: string): Promise<ChatMessage[]>;
 
   close?(): Promise<void>;
 }

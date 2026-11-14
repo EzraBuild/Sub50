@@ -13,7 +13,7 @@ interface Props {
 export function Peers({ peers, selfId, hostId }: Props) {
   return (
     <section id="listeners" className="scroll-mt-20 border-t border-line" aria-label="Listeners">
-      <SectionHead index="04" title="Listeners" meta="drift · rtt" />
+      <SectionHead index="05" title="Listeners" meta="drift · rtt" />
       <ul className="divide-y divide-line">
         {peers.map((p) => {
           const meta = STATUS_META[p.status];

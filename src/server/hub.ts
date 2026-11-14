@@ -4,7 +4,7 @@
  * forwards broadcasts that other instances commit to its local sockets.
  */
 import { randomBytes } from 'node:crypto';
-import { LIMITS, type ClientMessage, type Peer, type Reaction, type RoomState, type ServerMessage, type SyncStatus } from '../shared/protocol';
+import { LIMITS, type ChatMessage, type ClientMessage, type Peer, type Reaction, type RoomState, type ServerMessage, type SyncStatus } from '../shared/protocol';
 import { parseRoomId } from '../shared/room';
 import { applyCommand, applyTitle, createRoom, isRoomCommand, withHost, type Outcome } from './engine';
 import type { Broadcast, CommitResult, Mutator, PresenceRecord, RoomStore } from './store/types';
@@ -28,6 +28,21 @@ export const PRESENCE = {
  * Telemetry fan-out is throttled. Clients REPORT every 2s, but rebroadcasting
  * each one would burn through a hosted Redis command budget for no visible gain.
  */
+/** Chat: at most this many messages per listener within the window. */
+export const CHAT_LIMIT = { MAX: 5, WINDOW_MS: 5_000 } as const;
+/** "Is typing" pings go out at most this often per listener. */
+export const TYPING_THROTTLE_MS = 2_000;
+
+/** Plain text, CRLF folded, at most two blank lines in a row, trimmed and cut to length. */
+export function normalizeChat(raw: string): string {
+  return raw
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, LIMITS.CHAT_MAX);
+}
+
 /** Reactions: at most this many per listener within the window; extras are dropped silently. */
 export const REACTION_LIMIT = { MAX: 6, WINDOW_MS: 3_000 } as const;
 
@@ -49,6 +64,8 @@ interface LocalPeer {
   published: { at: number; status: SyncStatus; driftMs: number | null; rttMs: number | null };
   /** Recent reaction times, for the per-listener rate limit. */
   reactedAt: number[];
+  chattedAt: number[];
+  typedAt: number;
 }
 
 export interface HubOptions {
@@ -116,6 +133,8 @@ export class SyncHub {
       presence: { id: conn.id, conn: conn.id, name: 'Guest', joinedAt: now, lastSeen: now, driftMs: null, rttMs: null, status: 'idle' },
       published: { at: 0, status: 'idle', driftMs: null, rttMs: null },
       reactedAt: [],
+      chattedAt: [],
+      typedAt: 0,
     });
   }
 
@@ -137,6 +156,8 @@ export class SyncHub {
     if (!roomId || roomId !== msg.roomId) return;
     if (msg.type === 'REPORT') return this.report(peer, roomId, msg);
     if (msg.type === 'REACT') return this.react(peer, roomId, msg.emoji);
+    if (msg.type === 'CHAT_SEND') return this.chat(peer, roomId, msg.text);
+    if (msg.type === 'TYPING') return this.typing(peer, roomId);
     if (!isRoomCommand(msg)) return;
 
     let outcome = { kind: 'unchanged', resend: false } as Outcome;
@@ -185,6 +206,7 @@ export class SyncHub {
     // A commit was already delivered to every local socket, the joiner included.
     if (!result.changed && result.state) peer.conn.send(syncFrame(result.state));
     await this.broadcastPeers(roomId, live);
+    this.sendTo(peer, { type: 'CHAT_HISTORY', roomId, messages: await this.store.listChat(roomId) });
   }
 
   private async leave(peer: LocalPeer): Promise<void> {
@@ -247,6 +269,25 @@ export class SyncHub {
     if (peer.reactedAt.length >= REACTION_LIMIT.MAX) return;
     peer.reactedAt.push(now);
     await this.fanOut(roomId, { type: 'REACTION', roomId, id: newId(4), peerId: peer.presence.id, name: peer.presence.name, emoji });
+  }
+
+  private async chat(peer: LocalPeer, roomId: string, raw: string): Promise<void> {
+    const text = normalizeChat(raw);
+    if (!text) return;
+    const now = this.now();
+    peer.chattedAt = peer.chattedAt.filter((t) => now - t < CHAT_LIMIT.WINDOW_MS);
+    if (peer.chattedAt.length >= CHAT_LIMIT.MAX) return this.sendTo(peer, { type: 'ERROR', message: 'Slow down a little — too many messages.' });
+    peer.chattedAt.push(now);
+    const message: ChatMessage = { id: newId(6), peerId: peer.presence.id, name: peer.presence.name, text, at: now };
+    await this.store.appendChat(roomId, message, LIMITS.CHAT_HISTORY);
+    await this.fanOut(roomId, { type: 'CHAT', roomId, message });
+  }
+
+  private async typing(peer: LocalPeer, roomId: string): Promise<void> {
+    const now = this.now();
+    if (now - peer.typedAt < TYPING_THROTTLE_MS) return;
+    peer.typedAt = now;
+    await this.fanOut(roomId, { type: 'TYPING', roomId, peerId: peer.presence.id, name: peer.presence.name });
   }
 
   private async refreshPresence(): Promise<void> {

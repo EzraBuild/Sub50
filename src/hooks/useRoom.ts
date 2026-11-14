@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Peer, Reaction, RoomState } from '../shared/protocol';
+import type { ChatMessage, Peer, Reaction, RoomState } from '../shared/protocol';
 import type { FloatingReaction } from '../components/Reactions';
 import { getSessionId } from '../lib/identity';
 import { SyncClient, type ConnectionStatus } from '../lib/sync-client';
@@ -21,6 +21,8 @@ export function useRoom(roomId: string, username: string) {
   const [lanAddresses, setLanAddresses] = useState<string[]>([]);
   const [toast, setToast] = useState<Toast | null>(null);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [typing, setTyping] = useState<Record<string, { name: string; until: number }>>({});
 
   useEffect(() => {
     const offMsg = client.onMessage((msg) => {
@@ -46,6 +48,16 @@ export function useRoom(roomId: string, username: string) {
           setTimeout(() => setReactions((prev) => prev.filter((p) => p.id !== r.id)), 2700);
           break;
         }
+        case 'CHAT_HISTORY':
+          setMessages(msg.messages);
+          break;
+        case 'CHAT':
+          setMessages((prev) => (prev.some((m) => m.id === msg.message.id) ? prev : [...prev.slice(-99), msg.message]));
+          setTyping(({ [msg.message.peerId]: _done, ...rest }) => rest);
+          break;
+        case 'TYPING':
+          if (msg.peerId !== client.sessionId) setTyping((prev) => ({ ...prev, [msg.peerId]: { name: msg.name, until: Date.now() + 3500 } }));
+          break;
         case 'PEER_UPDATE':
           setPeers((prev) => prev.map((p) => (p.id === msg.peer.id ? msg.peer : p)));
           break;
@@ -58,7 +70,15 @@ export function useRoom(roomId: string, username: string) {
     });
     const offStatus = client.onStatus(setConnection);
     client.start();
-    const rttTimer = setInterval(() => setRttMs(client.clock.rtt === null ? null : Math.round(client.clock.rtt)), 1000);
+    const rttTimer = setInterval(() => {
+      setRttMs(client.clock.rtt === null ? null : Math.round(client.clock.rtt));
+      // Expire "is typing" lines.
+      setTyping((prev) => {
+        const now = Date.now();
+        const live = Object.entries(prev).filter(([, t]) => t.until > now);
+        return live.length === Object.keys(prev).length ? prev : Object.fromEntries(live);
+      });
+    }, 1000);
     return () => {
       offMsg();
       offStatus();
@@ -81,11 +101,15 @@ export function useRoom(roomId: string, username: string) {
       pause: (timestamp: number) => client.send({ type: 'PAUSE', roomId, timestamp }),
       seek: (timestamp: number) => client.send({ type: 'SEEK', roomId, timestamp }),
       react: (emoji: Reaction) => client.send({ type: 'REACT', roomId, emoji }),
+      chat: (text: string) => client.send({ type: 'CHAT_SEND', roomId, text }),
+      typing: () => client.send({ type: 'TYPING', roomId }),
     }),
     [client, roomId],
   );
 
   const notify = (message: string) => setToast({ id: Date.now(), message });
 
-  return { client, state, peers, connection, rttMs, selfId, lanAddresses, toast, notify, actions, reactions };
+  const typingNames = Object.values(typing).map((t) => t.name);
+
+  return { client, state, peers, connection, rttMs, selfId, lanAddresses, toast, notify, actions, reactions, messages, typingNames };
 }

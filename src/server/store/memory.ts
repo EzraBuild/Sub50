@@ -1,4 +1,4 @@
-import type { RoomState } from '../../shared/protocol';
+import type { ChatMessage, RoomState } from '../../shared/protocol';
 import type { Broadcast, CommitResult, Mutator, PresenceRecord, RoomStore } from './types';
 
 interface Entry {
@@ -19,6 +19,7 @@ export interface MemoryStoreOptions {
 export class MemoryStore implements RoomStore {
   private readonly rooms = new Map<string, Entry>();
   private readonly peers = new Map<string, Map<string, PresenceRecord>>();
+  private readonly chats = new Map<string, ChatMessage[]>();
   private readonly listeners = new Set<(msg: Broadcast) => void>();
   private readonly ttl: number;
   private readonly now: () => number;
@@ -79,6 +80,15 @@ export class MemoryStore implements RoomStore {
     return [...(this.peers.get(roomId)?.values() ?? [])].map((p) => ({ ...p }));
   }
 
+  async appendChat(roomId: string, message: ChatMessage, keep: number): Promise<void> {
+    const list = [...(this.chats.get(roomId) ?? []), { ...message }];
+    this.chats.set(roomId, list.slice(-keep));
+  }
+
+  async listChat(roomId: string): Promise<ChatMessage[]> {
+    return (this.chats.get(roomId) ?? []).map((m) => ({ ...m }));
+  }
+
   async close(): Promise<void> {
     clearInterval(this.sweeper);
     this.listeners.clear();
@@ -94,6 +104,7 @@ export class MemoryStore implements RoomStore {
     const entry = this.rooms.get(roomId);
     if (entry && this.now() - entry.touchedAt > this.ttl && !this.peers.has(roomId)) {
       this.rooms.delete(roomId);
+      this.chats.delete(roomId);
       return undefined;
     }
     return entry;

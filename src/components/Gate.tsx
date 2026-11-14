@@ -1,5 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { LIMITS } from '../shared/protocol';
+import { authEnabled } from '../lib/auth-config';
+import { AccountNameSync, GateAccount } from './Account';
 import { Cross } from './Frame';
 import { HeadphonesIcon, LogoMark } from './icons';
 import { ThemeToggle } from './ThemeToggle';
@@ -33,6 +35,8 @@ interface Props {
  */
 export function Gate({ roomId, name, connected, onEnter }: Props) {
   const [draft, setDraft] = useState(name);
+  // Prefill with the account name, unless the user already typed their own.
+  const useAccountName = useCallback((accountName: string) => setDraft((d) => (d === name ? accountName : d)), [name]);
   useScrollLock();
 
   const enter = (e?: FormEvent) => {
@@ -95,6 +99,12 @@ export function Gate({ roomId, name, connected, onEnter }: Props) {
           <button type="submit" className="btn-primary mt-2 h-12 w-full text-[14px]">
             Enter &amp; unlock audio
           </button>
+          {authEnabled && (
+            <p className="mt-4 text-center">
+              <AccountNameSync onName={useAccountName} />
+              <GateAccount />
+            </p>
+          )}
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-2.5 font-mono text-[10.5px] text-faint">

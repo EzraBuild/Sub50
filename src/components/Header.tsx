@@ -1,5 +1,7 @@
 import type { SyncStatus } from '../shared/protocol';
 import { LogoMark, UsersIcon } from './icons';
+import { authEnabled } from '../lib/auth-config';
+import { AccountButton } from './Account';
 import { ShareButton } from './ShareButton';
 import { TelemetryPill } from './TelemetryPill';
 import { ThemeToggle } from './ThemeToggle';
@@ -44,6 +46,11 @@ export function Header({ roomId, status, driftMs, rttMs, peerCount, shareUrl }: 
           <div className="cell px-1.5 sm:px-2">
             <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-sunken hover:text-ink" />
           </div>
+          {authEnabled && (
+            <div className="cell px-1.5 sm:px-2">
+              <AccountButton />
+            </div>
+          )}
           <div className="cell px-1.5 sm:px-2">
             <ShareButton url={shareUrl} />
           </div>

@@ -5,6 +5,8 @@ import { useRoom } from '../hooks/useRoom';
 import { useMediaSession } from '../hooks/useMediaSession';
 import { useYouTubeSync } from '../hooks/useYouTubeSync';
 import { loadName, saveName, shareUrl } from '../lib/identity';
+import { authEnabled } from '../lib/auth-config';
+import { AccountNameSync } from './Account';
 import { AudioDeck } from './AudioDeck';
 import { Chat } from './Chat';
 import { Cross } from './Frame';
@@ -212,6 +214,8 @@ export default function Sub50App({ roomId }: { roomId: string }) {
       {entered && sync.blocked && <BlockedOverlay onTap={sync.unlock} />}
       {visibleToast && <ToastView message={visibleToast} />}
       <ShortcutSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
+      {/* Signing in mid-session renames you in the room. */}
+      {authEnabled && entered && <AccountNameSync onName={setName} />}
       <DropZone
         enabled={entered && connected}
         onPlayNow={(url) => send(actions.changeVideo(url))}

@@ -89,6 +89,11 @@ export default function Sub50App({ roomId }: { roomId: string }) {
 
   const status = connected ? sync.telemetry.status : 'offline';
 
+  // Vote-to-skip tally, counted against who is here right now.
+  const liveIds = new Set(peers.map((p) => p.id));
+  const votes = (state?.skipVotes ?? []).filter((id) => liveIds.has(id));
+  const skip = { votes: votes.length, needed: Math.max(1, Math.ceil(peers.length / 2)), mine: votes.includes(selfId) };
+
   return (
     <div className="min-h-dvh pb-[env(safe-area-inset-bottom)]">
       <Header roomId={roomId} status={status} driftMs={sync.telemetry.driftMs} rttMs={rttMs} peerCount={peers.length} shareUrl={link} />
@@ -135,7 +140,8 @@ export default function Sub50App({ roomId }: { roomId: string }) {
               onTogglePlay={togglePlay}
               onSeek={(t) => send(actions.seek(t))}
               onResync={sync.resync}
-              onNext={() => state?.queue[0] && send(actions.queuePlay(state.queue[0].id))}
+              skip={skip}
+              onVoteSkip={() => state?.trackId && send(actions.voteSkip(state.trackId, !skip.mine))}
               reactions={reactions}
               onReact={(emoji) => send(actions.react(emoji))}
             />

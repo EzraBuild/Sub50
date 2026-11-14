@@ -103,6 +103,7 @@ export function useRoom(roomId: string, username: string) {
       react: (emoji: Reaction) => client.send({ type: 'REACT', roomId, emoji }),
       chat: (text: string) => client.send({ type: 'CHAT_SEND', roomId, text }),
       typing: () => client.send({ type: 'TYPING', roomId }),
+      voteSkip: (trackId: string, vote: boolean) => client.send({ type: 'VOTE_SKIP', roomId, trackId, vote }),
     }),
     [client, roomId],
   );

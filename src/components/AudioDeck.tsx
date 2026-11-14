@@ -19,7 +19,9 @@ interface Props {
   onTogglePlay: () => void;
   onSeek: (t: number) => void;
   onResync: () => void;
-  onNext: () => void;
+  /** Vote-to-skip tally for the current track. */
+  skip: { votes: number; needed: number; mine: boolean };
+  onVoteSkip: () => void;
   reactions: FloatingReaction[];
   onReact: (emoji: Reaction) => void;
 }
@@ -137,12 +139,19 @@ export function AudioDeck(props: Props) {
 
           <button
             type="button"
-            onClick={props.onNext}
-            className="btn h-9 justify-self-end px-3 text-xs"
-            disabled={!connected || !room?.queue.length}
-            title="Skip to the next track in the queue"
+            onClick={props.onVoteSkip}
+            aria-pressed={props.skip.mine}
+            className={`btn h-9 justify-self-end px-3 text-xs ${props.skip.mine ? 'border-ink bg-ink text-canvas hover:bg-ink-2' : ''}`}
+            disabled={!canControl}
+            title={
+              props.skip.needed === 1
+                ? 'Skip this track'
+                : props.skip.mine
+                  ? 'You voted to skip. Click to take it back.'
+                  : `Vote to skip: skips when ${props.skip.needed} of you agree`
+            }
           >
-            Next
+            {props.skip.needed === 1 ? 'Skip' : `Skip ${props.skip.votes}/${props.skip.needed}`}
             <NextIcon size={14} />
           </button>
         </div>

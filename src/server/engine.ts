@@ -11,11 +11,11 @@ import { parseYouTubeId } from '../shared/youtube';
 
 export type RoomCommand = Extract<
   ClientMessage,
-  { type: 'CHANGE_VIDEO' | 'PLAY' | 'PAUSE' | 'SEEK' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_PLAY' | 'TRACK_ENDED' }
+  { type: 'CHANGE_VIDEO' | 'PLAY' | 'PAUSE' | 'SEEK' | 'QUEUE_ADD' | 'QUEUE_REMOVE' | 'QUEUE_PLAY' | 'TRACK_ENDED' | 'VOTE_SKIP' }
 >;
 
 const ROOM_COMMANDS: ReadonlySet<string> = new Set<RoomCommand['type']>([
-  'CHANGE_VIDEO', 'PLAY', 'PAUSE', 'SEEK', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_PLAY', 'TRACK_ENDED',
+  'CHANGE_VIDEO', 'PLAY', 'PAUSE', 'SEEK', 'QUEUE_ADD', 'QUEUE_REMOVE', 'QUEUE_PLAY', 'TRACK_ENDED', 'VOTE_SKIP',
 ]);
 
 export const isRoomCommand = (msg: ClientMessage): msg is RoomCommand => ROOM_COMMANDS.has(msg.type);
@@ -26,7 +26,14 @@ export interface EngineContext {
   /** Display name of the peer issuing the command (queue attribution). */
   peerName: string;
   newId: () => string;
+  /** Presence id of the issuing peer (for votes). */
+  peerId?: string;
+  /** Ids of everyone currently in the room; only needed for VOTE_SKIP. */
+  livePeerIds?: readonly string[];
 }
+
+/** Votes needed to skip: half the live listeners, rounded up, at least one. */
+export const skipThreshold = (liveCount: number): number => Math.max(1, Math.ceil(liveCount / 2));
 
 export type Outcome =
   /** Commit `state`. If `resolveTitle` is set, look that video's title up and apply it later. */
@@ -72,6 +79,7 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
       0,
       LIMITS.PLAYED_MAX,
     );
+    s.skipVotes = [];
     s.videoId = item.videoId;
     s.title = item.title || null;
     s.trackId = ctx.newId();
@@ -144,17 +152,36 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
     case 'TRACK_ENDED': {
       // Every peer reports the end; only the first report for the live track counts.
       if (cmd.trackId !== s.trackId || !s.isPlaying) return unchanged();
-      const next = s.queue.shift();
-      if (next) {
-        startTrack(next);
-        return commit(next.title ? undefined : next.videoId);
-      }
-      // Queue exhausted: park at the end of the track.
-      s.lastTimestamp = positionAt(s, ctx.now);
-      s.isPlaying = false;
-      s.updatedAt = ctx.now;
+      return advance();
+    }
+
+    case 'VOTE_SKIP': {
+      // A vote is for one specific track; a late vote for the previous one is ignored.
+      if (!ctx.peerId || !s.trackId || cmd.trackId !== s.trackId) return unchanged();
+      const live = new Set(ctx.livePeerIds ?? [ctx.peerId]);
+      const before = new Set(s.skipVotes ?? []);
+      const votes = new Set([...before].filter((id) => live.has(id))); // people who left don't count
+      if (cmd.vote) votes.add(ctx.peerId);
+      else votes.delete(ctx.peerId);
+      if (votes.size >= skipThreshold(live.size)) return advance();
+      if (votes.size === before.size && [...votes].every((id) => before.has(id))) return unchanged();
+      s.skipVotes = [...votes];
       return commit();
     }
+  }
+
+  /** Next queued track, or park at the current position when the queue is empty. */
+  function advance(): Outcome {
+    const next = s.queue.shift();
+    if (next) {
+      startTrack(next);
+      return commit(next.title ? undefined : next.videoId);
+    }
+    s.lastTimestamp = positionAt(s, ctx.now);
+    s.isPlaying = false;
+    s.updatedAt = ctx.now;
+    s.skipVotes = [];
+    return commit();
   }
 }
 

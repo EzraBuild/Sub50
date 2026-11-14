@@ -45,6 +45,8 @@ export interface RoomState {
   queue: QueueItem[];
   /** Last tracks the room played, newest first (absent on rooms created before this existed). */
   played?: PlayedItem[];
+  /** Listeners voting to skip the current track (reset whenever the track changes). */
+  skipVotes?: string[];
   hostId: string;
   /** Version number: +1 on every committed change. Stores compare-and-swap on it. */
   seq: number;
@@ -100,6 +102,8 @@ export type ClientMessage =
   | { type: 'QUEUE_REMOVE'; roomId: string; itemId: string }
   | { type: 'QUEUE_PLAY'; roomId: string; itemId: string }
   | { type: 'TRACK_ENDED'; roomId: string; trackId: string }
+  /** Cast (`vote: true`) or withdraw a vote to skip the current track. */
+  | { type: 'VOTE_SKIP'; roomId: string; trackId: string; vote: boolean }
   | { type: 'REPORT'; roomId: string; driftMs: number | null; rttMs: number | null; status: SyncStatus }
   | { type: 'REACT'; roomId: string; emoji: Reaction }
   | { type: 'CHAT_SEND'; roomId: string; text: string }

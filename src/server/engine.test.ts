@@ -132,3 +132,39 @@ test('rooms created before the played log existed keep working', () => {
   const s = changed(run(legacy as RoomState, { type: 'CHANGE_VIDEO', url: A }));
   assert.equal(s.played!.length, 1);
 });
+
+const vote = (s: RoomState, peerId: string, live: string[], v = true, now = NOW) =>
+  applyCommand(s, { type: 'VOTE_SKIP', roomId: s.roomId, trackId: s.trackId!, vote: v }, { ...ctx(now), peerId, livePeerIds: live });
+
+test('vote to skip: skips once half the live room agrees, votes reset on the next track', () => {
+  let s = changed(run(changed(run(playing(), { type: 'QUEUE_ADD', url: B })), { type: 'QUEUE_ADD', url: A }));
+  const room = ['p1', 'p2', 'p3', 'p4'];
+  s = changed(vote(s, 'p1', room));
+  assert.deepEqual([s.videoId, s.skipVotes], ['aaaaaaaaaaa', ['p1']], '1 of 4: not yet');
+  s = changed(vote(s, 'p2', room));
+  assert.equal(s.videoId, 'bbbbbbbbbbb', '2 of 4 = half: skipped to the next queued track');
+  assert.deepEqual(s.skipVotes, [], 'votes reset for the new track');
+});
+
+test('vote to skip: withdraw, duplicates, stale voters, wrong track, solo listener', () => {
+  let s = changed(run(playing(), { type: 'QUEUE_ADD', url: B }));
+  s = changed(vote(s, 'p1', ['p1', 'p2', 'p3']));
+  assert.equal(vote(s, 'p1', ['p1', 'p2', 'p3']).kind, 'unchanged', 'voting twice changes nothing');
+  s = changed(vote(s, 'p1', ['p1', 'p2', 'p3'], false));
+  assert.deepEqual(s.skipVotes, [], 'withdrawn');
+
+  s = changed(vote(s, 'gone', ['gone', 'p1', 'p2', 'p3', 'p4']));
+  s = changed(vote(s, 'p1', ['p1', 'p2', 'p3', 'p4'])); // "gone" left: their vote no longer counts
+  assert.deepEqual([s.videoId, s.skipVotes], ['aaaaaaaaaaa', ['p1']]);
+
+  const stale = applyCommand(s, { type: 'VOTE_SKIP', roomId: 'jam', trackId: 'old-track', vote: true }, { ...ctx(), peerId: 'p2', livePeerIds: ['p1', 'p2'] });
+  assert.equal(stale.kind, 'unchanged', 'a vote for a previous track is ignored');
+
+  const solo = changed(vote(s, 'p1', ['p1']));
+  assert.equal(solo.videoId, 'bbbbbbbbbbb', 'alone in the room: one vote skips');
+});
+
+test('vote to skip with an empty queue stops at the current position', () => {
+  const s = changed(vote(playing(), 'p1', ['p1'], true, NOW + SYNC.TRACK_START_DELAY_MS + 42_000));
+  assert.deepEqual([s.isPlaying, s.lastTimestamp, s.skipVotes], [false, 42, []]);
+});

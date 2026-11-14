@@ -160,10 +160,12 @@ export class SyncHub {
     if (msg.type === 'TYPING') return this.typing(peer, roomId);
     if (!isRoomCommand(msg)) return;
 
+    // Votes are judged against who is actually here right now.
+    const livePeerIds = msg.type === 'VOTE_SKIP' ? (await this.livePeers(roomId)).map((p) => p.id) : undefined;
     let outcome = { kind: 'unchanged', resend: false } as Outcome;
     const result = await this.commit(roomId, (current) => {
       if (!current) return null;
-      outcome = applyCommand(current, msg, { now: this.now(), peerName: peer.presence.name, newId });
+      outcome = applyCommand(current, msg, { now: this.now(), peerName: peer.presence.name, peerId: peer.presence.id, livePeerIds, newId });
       return outcome.kind === 'changed' ? outcome.state : null;
     });
 

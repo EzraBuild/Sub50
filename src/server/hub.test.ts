@@ -289,3 +289,21 @@ test('normalizeChat folds line endings, strips control characters, caps length',
   assert.equal(normalizeChat('x'.repeat(900)).length, 500);
   assert.equal(normalizeChat('<b>not html</b>'), '<b>not html</b>', 'kept as text; the UI renders text, never HTML');
 });
+
+test('vote to skip uses live presence across instances', async () => {
+  const c = cluster(2);
+  const a = c.client('a', c.hubs[0]);
+  const b = c.client('b', c.hubs[1]);
+  const d = c.client('d', c.hubs[1]);
+  await a.join('jam', 'Ada', 'session-ada');
+  await b.join('jam', 'Bo', 'session-bo');
+  await d.join('jam', 'Di', 'session-di');
+  await a.send({ type: 'CHANGE_VIDEO', roomId: 'jam', url: 'https://youtu.be/aaaaaaaaaaa' });
+  await a.send({ type: 'QUEUE_ADD', roomId: 'jam', url: 'https://youtu.be/bbbbbbbbbbb', title: 'B' });
+  const track = a.state()!.trackId!;
+
+  await a.send({ type: 'VOTE_SKIP', roomId: 'jam', trackId: track, vote: true });
+  assert.deepEqual([d.state()!.videoId, d.state()!.skipVotes], ['aaaaaaaaaaa', ['session-ada']], '1 of 3: needs 2');
+  await b.send({ type: 'VOTE_SKIP', roomId: 'jam', trackId: track, vote: true });
+  assert.equal(d.state()!.videoId, 'bbbbbbbbbbb', '2 of 3 from two instances: skipped');
+});

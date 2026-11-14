@@ -65,6 +65,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       const itemId = str(data.itemId, 64);
       return itemId === null ? null : { type: data.type, roomId, itemId };
     }
+    case 'VOTE_SKIP': {
+      const trackId = str(data.trackId, 64);
+      return trackId === null || typeof data.vote !== 'boolean' ? null : { type: 'VOTE_SKIP', roomId, trackId, vote: data.vote };
+    }
     case 'TRACK_ENDED': {
       const trackId = str(data.trackId, 64);
       return trackId === null ? null : { type: 'TRACK_ENDED', roomId, trackId };

@@ -150,6 +150,11 @@ export function Queue({ queue, played, nowPlayingId, disabled, onPlay, onRemove,
             ))}
           </ol>
         ))}
+      {tab === 'played' && (
+        <a href="/me" className="block border-t border-line px-4 py-2.5 font-mono text-[11px] text-muted transition-colors hover:text-ink sm:px-5">
+          all your rooms, songs and chat →
+        </a>
+      )}
       {tab === 'saved' &&
         (!fav.signedIn ? (
           <div className="p-4 sm:p-5">

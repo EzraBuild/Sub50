@@ -46,3 +46,29 @@ export function formatWhen(at: number, now = Date.now()): string {
 
 /** A link that opens a fresh room and plays (or queues) this track. */
 export const listenUrl = (roomId: string, videoId: string) => `/?room=${roomId}&play=${encodeURIComponent(videoId)}`;
+
+export interface PersonSummary {
+  name: string;
+  sessions: number;
+  minutes: number;
+  lastAt: number;
+}
+
+/** Who you've listened with most: grouped by display name (case-insensitive). */
+export function summarizePeople(sessions: ListeningSession[]): PersonSummary[] {
+  const byName = new Map<string, PersonSummary>();
+  for (const s of sessions) {
+    for (const p of s.people) {
+      const key = p.name.toLowerCase();
+      const cur = byName.get(key) ?? { name: p.name, sessions: 0, minutes: 0, lastAt: 0 };
+      cur.sessions += 1;
+      cur.minutes += s.minutes;
+      if (s.endedAt > cur.lastAt) {
+        cur.lastAt = s.endedAt;
+        cur.name = p.name; // most recent spelling wins
+      }
+      byName.set(key, cur);
+    }
+  }
+  return [...byName.values()].sort((a, b) => b.minutes - a.minutes || b.lastAt - a.lastAt);
+}

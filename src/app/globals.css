@@ -165,24 +165,6 @@
   }
 }
 
-/* Audio-only equalizer bars. */
-@keyframes eq {
-  0%,
-  100% {
-    transform: scaleY(0.25);
-  }
-  50% {
-    transform: scaleY(1);
-  }
-}
-.eq-bar {
-  transform-origin: bottom;
-  animation: eq 1.1s ease-in-out infinite;
-}
-.eq-paused .eq-bar {
-  animation-play-state: paused;
-}
-
 /* Reactions drift up with a little sideways sway, then fade. */
 @keyframes reaction-float {
   0% {
@@ -281,7 +263,6 @@
   .lock-glow,
   .ring-out,
   .rise,
-  .eq-bar,
   .scope-scan {
     animation: none;
   }

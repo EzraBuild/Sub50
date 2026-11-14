@@ -8,6 +8,7 @@ import { newRoomId } from '../../shared/room';
 import { authEnabled } from '../../lib/auth-config';
 import { formatMinutes, formatWhen, listenUrl, summarizePeople, summarizeTracks } from '../../lib/activity';
 import { loadLocal, removeLocal } from '../../lib/localHistory';
+import { moveGuestHistory, movedMessage } from '../../lib/migrateHistory';
 import { FavoritesProvider } from '../../hooks/useFavorites';
 import { Avatar } from '../Avatar';
 import { FavoriteButton } from '../FavoriteButton';
@@ -162,7 +163,10 @@ function SignedInActivity({ notify }: { notify: (message: string) => void }) {
   const [data, setData] = useState<HistoryData | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch('/api/history', { cache: 'no-store' })
+    // Anything this device kept from before you signed in joins your account first.
+    moveGuestHistory()
+      .then(({ moved }) => moved > 0 && notify(movedMessage(moved)), () => {})
+      .then(() => fetch('/api/history', { cache: 'no-store' }))
       .then((r) => (r.ok ? (r.json() as Promise<HistoryData>) : Promise.reject(new Error())))
       .then((d) => alive && setData(d))
       .catch(() => {

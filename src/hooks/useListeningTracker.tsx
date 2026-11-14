@@ -8,6 +8,9 @@ import { getSessionId } from '../lib/identity';
 import { upsertLocal } from '../lib/localHistory';
 import { ListeningTracker } from '../lib/listening';
 
+/** Visits in progress in this tab: moving device history skips them (their tracker re-sends them in full). */
+export const activeVisits = new Set<string>();
+
 const TICK_MS = 5_000;
 const SEND_EVERY_MS = 60_000;
 
@@ -44,6 +47,8 @@ function Tracker({ roomId, state, peers, selfId, selfName, messages, serverNow, 
     // One id per visit: the tab's session id plus when you entered.
     const tracker = new ListeningTracker(`${getSessionId().slice(0, 40)}-${Date.now().toString(36)}`, roomId, () => live.current.selfName, Date.now());
     const enteredAt = live.current.serverNow();
+    activeVisits.add(tracker.id);
+    let wasSignedIn = live.current.signedIn;
 
     const tick = () => {
       const { state: s, peers: p, selfId: me } = live.current;
@@ -58,6 +63,9 @@ function Tracker({ roomId, state, peers, selfId, selfName, messages, serverNow, 
 
     const send = async (final: boolean) => {
       tick();
+      // Signed in mid-visit: what went to the device goes to the account now, all of it.
+      if (live.current.signedIn && !wasSignedIn) tracker.resetSent();
+      wasSignedIn = live.current.signedIn;
       const session = tracker.pending();
       if (!session) return;
       if (!live.current.signedIn) {
@@ -88,6 +96,7 @@ function Tracker({ roomId, state, peers, selfId, selfName, messages, serverNow, 
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', onPageHide);
     return () => {
+      activeVisits.delete(tracker.id);
       clearInterval(ticker);
       clearInterval(sender);
       document.removeEventListener('visibilitychange', onHide);

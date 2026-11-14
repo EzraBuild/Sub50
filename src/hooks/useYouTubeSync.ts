@@ -198,6 +198,7 @@ export function useYouTubeSync(client: SyncClient, room: RoomState | null) {
           eng.loadedTrackId = null;
         }
         clearStartTimer();
+        setError(null);
         return publish('idle', null);
       }
 
@@ -434,6 +435,8 @@ export function useYouTubeSync(client: SyncClient, room: RoomState | null) {
     };
 
     const onError = (e: YT.OnErrorEvent) => {
+      // Errors only mean something while there's a track on the deck.
+      if (!roomRef.current?.videoId || !eng.loadedTrackId) return;
       setError(describePlayerError(e.data as number));
       publish('idle', null);
     };
@@ -541,12 +544,17 @@ export function useYouTubeSync(client: SyncClient, room: RoomState | null) {
     eng.playIssuedAt = eng.playFirstIssuedAt = null;
     eng.userIntentUntil = 0;
     if (!playerRef.current) return; // not ready yet: onReady will reconcile
-    api.remote((p) => {
-      p.mute();
-      p.playVideo();
-      p.pauseVideo();
-      p.unMute();
-    });
+    // The play/pause trick needs a cued video: playVideo() on an empty player makes
+    // YouTube raise error 2 ("invalid parameter"). With no track yet, the first one
+    // starts from this same unlocked page (or the blocked-overlay tap).
+    if (eng.loadedTrackId) {
+      api.remote((p) => {
+        p.mute();
+        p.playVideo();
+        p.pauseVideo();
+        p.unMute();
+      });
+    }
     eng.prerollMuted = false;
     api.reconcile('unlock');
   }, [api]);

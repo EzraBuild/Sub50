@@ -1,8 +1,23 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { LIMITS } from '../shared/protocol';
 import { Cross } from './Frame';
 import { HeadphonesIcon, LogoMark } from './icons';
 import { ThemeToggle } from './ThemeToggle';
+
+/**
+ * While a full-screen overlay is open, the app page behind it must not scroll,
+ * or the browser shows that page's scrollbar beside the overlay.
+ */
+function useScrollLock() {
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = root.style.overflow;
+    root.style.overflow = 'hidden';
+    return () => {
+      root.style.overflow = previous;
+    };
+  }, []);
+}
 
 interface Props {
   roomId: string;
@@ -18,6 +33,7 @@ interface Props {
  */
 export function Gate({ roomId, name, connected, onEnter }: Props) {
   const [draft, setDraft] = useState(name);
+  useScrollLock();
 
   const enter = (e?: FormEvent) => {
     e?.preventDefault();
@@ -25,7 +41,7 @@ export function Gate({ roomId, name, connected, onEnter }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-canvas px-4 py-10">
+    <div className="no-scrollbar fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-canvas px-4 py-10">
       <div aria-hidden className="dot-grid pointer-events-none absolute inset-0 [mask-image:radial-gradient(60%_55%_at_50%_45%,#000,transparent)]" />
       <div className="absolute top-3 right-3">
         <ThemeToggle />
@@ -98,6 +114,7 @@ export function Gate({ roomId, name, connected, onEnter }: Props) {
 
 /** Shown when the browser refuses a programmatic play (autoplay policy). Any tap fixes it. */
 export function BlockedOverlay({ onTap }: { onTap: () => void }) {
+  useScrollLock();
   return (
     <button
       type="button"

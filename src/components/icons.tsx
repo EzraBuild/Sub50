@@ -205,3 +205,9 @@ export const ArrowDownIcon = (p: IconProps) => (
     <path d="M12 5v14M6 13l6 6 6-6" />
   </Svg>
 );
+
+export const ListPlusIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 6h11M4 12h11M4 18h7M18 14v6M15 17h6" />
+  </Svg>
+);

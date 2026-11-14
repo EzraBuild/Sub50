@@ -2,6 +2,7 @@ import { useCallback, useRef, type RefObject } from 'react';
 import { groove, grooveLevels, type Groove } from '../lib/beat';
 import { useMicLevels } from '../hooks/useMicLevels';
 import type { Reaction, RoomState } from '../shared/protocol';
+import { AddToPlaylist } from './AddToPlaylist';
 import { DotMatrix, type LevelSource } from './DotMatrix';
 import { FavoriteButton } from './FavoriteButton';
 import { SectionHead } from './Frame';
@@ -27,6 +28,8 @@ interface Props {
   onVoteSkip: () => void;
   reactions: FloatingReaction[];
   onReact: (emoji: Reaction) => void;
+  /** Short messages for the user (toasts). */
+  notify: (message: string) => void;
 }
 
 /**
@@ -146,7 +149,8 @@ export function AudioDeck(props: Props) {
             </h2>
             {hasTrack && <p className="mt-1 font-mono text-[11px] text-faint">youtube · {room?.videoId}</p>}
           </div>
-          <div className="mt-5">
+          <div className="mt-5 flex items-center gap-2">
+            {room?.videoId && <AddToPlaylist videoId={room.videoId} title={room.title ?? ''} notify={props.notify} variant="deck" />}
             <FavoriteButton videoId={room?.videoId ?? null} title={room?.title ?? ''} />
           </div>
         </div>

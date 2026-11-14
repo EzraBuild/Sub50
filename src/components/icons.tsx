@@ -178,3 +178,10 @@ export const HistoryIcon = (p: IconProps) => (
     <path d="M12 7.5V12l3 2" />
   </Svg>
 );
+
+export const BellIcon = ({ filled = false, ...p }: IconProps & { filled?: boolean }) => (
+  <Svg {...p}>
+    <path d="M6 9.5a6 6 0 0 1 12 0c0 4.5 1.8 6.2 2.5 7H3.5c.7-.8 2.5-2.5 2.5-7Z" fill={filled ? 'currentColor' : 'none'} />
+    <path d="M10 20a2.2 2.2 0 0 0 4 0" />
+  </Svg>
+);

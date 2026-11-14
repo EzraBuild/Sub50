@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 're
 import { LIMITS, type ChatMessage } from '../shared/protocol';
 import { Avatar } from './Avatar';
 import { SectionHead } from './Frame';
-import { SendIcon } from './icons';
+import { BellIcon, SendIcon } from './icons';
 
 interface Props {
   messages: ChatMessage[];
@@ -11,6 +11,8 @@ interface Props {
   disabled: boolean;
   onSend: (text: string) => boolean;
   onTyping: () => void;
+  /** Bell in the header for system notifications; omitted where the browser can't show them. */
+  notify?: { enabled: boolean; blocked: boolean; onToggle: () => void };
 }
 
 const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -24,7 +26,7 @@ function typingLine(names: string[]): string {
   return `${names.length} people are typing…`;
 }
 
-export function Chat({ messages, typingNames, selfId, disabled, onSend, onTyping }: Props) {
+export function Chat({ messages, typingNames, selfId, disabled, onSend, onTyping, notify }: Props) {
   const [draft, setDraft] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
@@ -65,7 +67,33 @@ export function Chat({ messages, typingNames, selfId, disabled, onSend, onTyping
 
   return (
     <section aria-label="Chat" className="border-t border-line">
-      <SectionHead index="04" title="Chat" meta={messages.length ? `${messages.length} msg${messages.length === 1 ? '' : 's'}` : 'say hi'} />
+      <SectionHead
+        index="04"
+        title="Chat"
+        meta={
+          <span className="flex items-center gap-2">
+            {messages.length ? `${messages.length} msg${messages.length === 1 ? '' : 's'}` : 'say hi'}
+            {notify && (
+              <button
+                type="button"
+                onClick={notify.onToggle}
+                aria-pressed={notify.enabled}
+                title={
+                  notify.enabled
+                    ? 'Notifying you about new messages while you’re in another app. Tap to stop.'
+                    : notify.blocked
+                      ? 'Notifications are blocked in your browser’s site settings'
+                      : 'Notify me about new messages while I’m in another app'
+                }
+                aria-label={notify.enabled ? 'Turn off chat notifications' : 'Turn on chat notifications'}
+                className={`-mr-1.5 inline-flex size-7 items-center justify-center rounded-md transition-colors hover:bg-sunken ${notify.enabled ? 'text-brand' : 'text-muted hover:text-ink'} ${notify.blocked ? 'opacity-50' : ''}`}
+              >
+                <BellIcon size={14} filled={notify.enabled} />
+              </button>
+            )}
+          </span>
+        }
+      />
 
       <div ref={listRef} onScroll={onScroll} className="h-72 overflow-y-auto px-4 py-3 sm:px-5" aria-live="polite" aria-label="Messages">
         {messages.length === 0 ? (

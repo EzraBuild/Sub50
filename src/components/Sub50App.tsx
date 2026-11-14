@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRoom } from '../hooks/useRoom';
 import { useMediaSession } from '../hooks/useMediaSession';
+import { useChatNotifications } from '../hooks/useChatNotifications';
 import { useYouTubeSync } from '../hooks/useYouTubeSync';
 import { loadName, saveName, shareUrl } from '../lib/identity';
 import { authEnabled } from '../lib/auth-config';
@@ -105,12 +106,13 @@ export default function Sub50App({ roomId }: { roomId: string }) {
   const voteSkip = () => state?.trackId && connected && send(actions.voteSkip(state.trackId, !skip.mine));
 
   const [helpOpen, setHelpOpen] = useState(false);
+  const chatAlerts = useChatNotifications({ messages, selfId, roomId, serverNow: () => client.clock.serverNow(), onBlocked: notify });
   // Lock screen / notification controls act on the whole room (where the browser routes them to us).
   useMediaSession(state, roomId, peers.length, {
     play: () => state?.isPlaying === false && togglePlay(),
     pause: () => state?.isPlaying && togglePlay(),
     next: voteSkip,
-  });
+  }, chatAlerts.unread);
 
   useShortcuts(entered, {
     togglePlay,
@@ -199,6 +201,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
                 return ok;
               }}
               onTyping={actions.typing}
+              notify={chatAlerts.supported ? { enabled: chatAlerts.enabled, blocked: chatAlerts.blocked, onToggle: () => void chatAlerts.toggle() } : undefined}
             />
             <Peers peers={peers} selfId={selfId} hostId={state?.hostId ?? null} />
           </aside>

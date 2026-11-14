@@ -1,8 +1,10 @@
+import { SignInButton } from '@clerk/nextjs';
 import { useState } from 'react';
+import { useFavorites } from '../hooks/useFavorites';
 import type { PlayedItem, QueueItem } from '../shared/protocol';
 import { thumbnailUrl } from '../shared/youtube';
 import { SectionHead } from './Frame';
-import { CloseIcon, PlayIcon, PlusIcon } from './icons';
+import { CloseIcon, HeartIcon, PlayIcon, PlusIcon } from './icons';
 
 interface Props {
   queue: QueueItem[];
@@ -13,6 +15,9 @@ interface Props {
   onPlay: (id: string) => void;
   onRemove: (id: string) => void;
   onRequeue: (item: PlayedItem) => void;
+  /** Play a saved track now / add it to the queue. */
+  onPlayTrack: (videoId: string) => void;
+  onQueueTrack: (videoId: string, title: string) => void;
 }
 
 /** Compact 24h time so the column never wraps ("15:58", not "03:58 PM"). */
@@ -26,8 +31,9 @@ function Thumb({ videoId }: { videoId: string }) {
   );
 }
 
-export function Queue({ queue, played, nowPlayingId, disabled, onPlay, onRemove, onRequeue }: Props) {
-  const [tab, setTab] = useState<'next' | 'played'>('next');
+export function Queue({ queue, played, nowPlayingId, disabled, onPlay, onRemove, onRequeue, onPlayTrack, onQueueTrack }: Props) {
+  const [tab, setTab] = useState<'next' | 'played' | 'saved'>('next');
+  const fav = useFavorites();
   // The first played entry is the track on the deck right now; history starts after it.
   const history = played[0]?.videoId === nowPlayingId ? played.slice(1) : played;
 
@@ -37,6 +43,7 @@ export function Queue({ queue, played, nowPlayingId, disabled, onPlay, onRemove,
         [
           ['next', `next ${queue.length}`],
           ['played', `played ${history.length}`],
+          ...(fav.enabled ? ([['saved', `saved${fav.signedIn ? ` ${fav.items.length}` : ''}`]] as const) : []),
         ] as const
       ).map(([key, label]) => (
         <button
@@ -55,7 +62,7 @@ export function Queue({ queue, played, nowPlayingId, disabled, onPlay, onRemove,
 
   return (
     <section aria-label="Shared queue">
-      <SectionHead index="03" title={tab === 'next' ? 'Up next' : 'Played'} meta={tabs} />
+      <SectionHead index="03" title={tab === 'next' ? 'Up next' : tab === 'played' ? 'Played' : 'Saved'} meta={tabs} />
 
       {tab === 'next' &&
         (queue.length === 0 ? (
@@ -135,6 +142,65 @@ export function Queue({ queue, played, nowPlayingId, disabled, onPlay, onRemove,
                   title="Queue again"
                 >
                   <PlusIcon size={15} />
+                </button>
+              </li>
+            ))}
+          </ol>
+        ))}
+      {tab === 'saved' &&
+        (!fav.signedIn ? (
+          <div className="p-4 sm:p-5">
+            <div className="rounded-lg border border-dashed border-line-strong px-4 py-7 text-center">
+              <p className="label">your saved tracks</p>
+              <p className="mt-2 text-[13px] text-muted">Sign in and ❤️ tracks; they follow you to every device.</p>
+              <SignInButton mode="modal">
+                <button type="button" className="btn mt-4 h-9 px-3 text-xs">
+                  Sign in
+                </button>
+              </SignInButton>
+            </div>
+          </div>
+        ) : fav.items.length === 0 ? (
+          <div className="p-4 sm:p-5">
+            <div className="rounded-lg border border-dashed border-line-strong px-4 py-7 text-center">
+              <p className="label">nothing saved yet</p>
+              <p className="mt-2 text-[13px] text-muted">Tap the ❤️ next to a track to keep it here.</p>
+            </div>
+          </div>
+        ) : (
+          <ol className="max-h-[420px] divide-y divide-line overflow-y-auto">
+            {fav.items.map((item) => (
+              <li key={item.videoId} className="group flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-sunken sm:px-4">
+                <button type="button" disabled={disabled} onClick={() => onPlayTrack(item.videoId)} className="flex min-w-0 flex-1 items-center gap-3 text-left" title="Play now for everyone">
+                  <span className="relative">
+                    <Thumb videoId={item.videoId} />
+                    <span className="absolute inset-0 flex items-center justify-center rounded-md bg-black/55 text-white opacity-0 transition-opacity group-hover:opacity-100">
+                      <PlayIcon size={14} />
+                    </span>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] font-medium text-ink">{item.title || item.videoId}</span>
+                    <span className="block truncate font-mono text-[10.5px] text-muted">saved {new Date(item.at).toLocaleDateString()}</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onQueueTrack(item.videoId, item.title)}
+                  className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition hover:bg-line hover:text-ink"
+                  aria-label={`Queue ${item.title || item.videoId}`}
+                  title="Add to queue"
+                >
+                  <PlusIcon size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fav.toggle(item.videoId, item.title)}
+                  className="flex size-8 shrink-0 items-center justify-center rounded-md text-bad transition hover:bg-bad/10"
+                  aria-label={`Remove ${item.title || item.videoId} from favorites`}
+                  title="Remove from favorites"
+                >
+                  <HeartIcon size={15} filled />
                 </button>
               </li>
             ))}

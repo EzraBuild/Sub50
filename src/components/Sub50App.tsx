@@ -6,6 +6,7 @@ import { useMediaSession } from '../hooks/useMediaSession';
 import { useYouTubeSync } from '../hooks/useYouTubeSync';
 import { loadName, saveName, shareUrl } from '../lib/identity';
 import { authEnabled } from '../lib/auth-config';
+import { FavoritesProvider } from '../hooks/useFavorites';
 import { AccountNameSync } from './Account';
 import { AudioDeck } from './AudioDeck';
 import { Chat } from './Chat';
@@ -118,7 +119,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
     closeHelp: () => setHelpOpen(false),
   });
 
-  return (
+  const page = (
     <div className="min-h-dvh pb-[env(safe-area-inset-bottom)]">
       <Header roomId={roomId} status={status} driftMs={sync.telemetry.driftMs} rttMs={rttMs} peerCount={peers.length} shareUrl={link} />
 
@@ -181,6 +182,8 @@ export default function Sub50App({ roomId }: { roomId: string }) {
               onPlay={(id) => send(actions.queuePlay(id))}
               onRemove={(id) => send(actions.queueRemove(id))}
               onRequeue={(item) => send(actions.queueAdd(`https://youtu.be/${item.videoId}`, item.title))}
+              onPlayTrack={(videoId) => send(actions.changeVideo(`https://youtu.be/${videoId}`))}
+              onQueueTrack={(videoId, title) => send(actions.queueAdd(`https://youtu.be/${videoId}`, title))}
             />
             <Chat
               messages={messages}
@@ -224,4 +227,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
       />
     </div>
   );
+
+  // Favorites need an account; without Clerk on this server the provider is skipped entirely.
+  return authEnabled ? <FavoritesProvider onError={notify}>{page}</FavoritesProvider> : page;
 }

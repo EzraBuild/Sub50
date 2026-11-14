@@ -161,3 +161,12 @@ export const SendIcon = (p: IconProps) => (
     <path d="m12 13.5 3.5-3.5" />
   </Svg>
 );
+
+export const HeartIcon = ({ filled = false, ...p }: IconProps & { filled?: boolean }) => (
+  <Svg {...p}>
+    <path
+      d="M12 20s-7.5-4.6-9.2-9.4C1.6 7.2 3.7 4 7 4c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.3 0 5.4 3.2 4.2 6.6C19.5 15.4 12 20 12 20Z"
+      fill={filled ? 'currentColor' : 'none'}
+    />
+  </Svg>
+);

@@ -11,6 +11,7 @@ import { BlockedOverlay, Gate, ToastView } from './Gate';
 import { Header } from './Header';
 import { Peers } from './Peers';
 import { Queue } from './Queue';
+import { ShortcutSheet, useShortcuts } from './Shortcuts';
 import { SyncScope } from './SyncScope';
 import { UrlBar } from './UrlBar';
 
@@ -93,6 +94,18 @@ export default function Sub50App({ roomId }: { roomId: string }) {
   const liveIds = new Set(peers.map((p) => p.id));
   const votes = (state?.skipVotes ?? []).filter((id) => liveIds.has(id));
   const skip = { votes: votes.length, needed: Math.max(1, Math.ceil(peers.length / 2)), mine: votes.includes(selfId) };
+  const voteSkip = () => state?.trackId && connected && send(actions.voteSkip(state.trackId, !skip.mine));
+
+  const [helpOpen, setHelpOpen] = useState(false);
+  useShortcuts(entered, {
+    togglePlay,
+    resync: sync.resync,
+    voteSkip,
+    react: (emoji) => connected && send(actions.react(emoji)),
+    focusLink: () => document.getElementById('link-input')?.focus(),
+    toggleHelp: () => setHelpOpen((o) => !o),
+    closeHelp: () => setHelpOpen(false),
+  });
 
   return (
     <div className="min-h-dvh pb-[env(safe-area-inset-bottom)]">
@@ -141,7 +154,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
               onSeek={(t) => send(actions.seek(t))}
               onResync={sync.resync}
               skip={skip}
-              onVoteSkip={() => state?.trackId && send(actions.voteSkip(state.trackId, !skip.mine))}
+              onVoteSkip={voteSkip}
               reactions={reactions}
               onReact={(emoji) => send(actions.react(emoji))}
             />
@@ -180,13 +193,16 @@ export default function Sub50App({ roomId }: { roomId: string }) {
           <span>
             clock {Math.round(client.clock.offset)}ms · rate {sync.telemetry.rate.toFixed(2)}× · {connection}
           </span>
-          <span>sub50 · youtube in lockstep</span>
+          <button type="button" onClick={() => setHelpOpen((o) => !o)} className="hidden items-center gap-1.5 hover:text-ink sm:inline-flex">
+            <kbd className="rounded border border-line-strong px-1 text-[10px]">?</kbd> keyboard shortcuts
+          </button>
         </footer>
       </div>
 
       {!entered && <Gate roomId={roomId} name={name} connected={connected} onEnter={enter} />}
       {entered && sync.blocked && <BlockedOverlay onTap={sync.unlock} />}
       {visibleToast && <ToastView message={visibleToast} />}
+      <ShortcutSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

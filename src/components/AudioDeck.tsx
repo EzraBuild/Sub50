@@ -1,10 +1,11 @@
 import { useCallback, useRef, type RefObject } from 'react';
 import { groove, grooveLevels, type Groove } from '../lib/beat';
+import { useMicLevels } from '../hooks/useMicLevels';
 import type { Reaction, RoomState } from '../shared/protocol';
 import { DotMatrix, type LevelSource } from './DotMatrix';
 import { FavoriteButton } from './FavoriteButton';
 import { SectionHead } from './Frame';
-import { HeadphonesIcon, NextIcon, PauseIcon, PlayIcon, ResyncIcon, VideoIcon, VideoOffIcon } from './icons';
+import { HeadphonesIcon, MicIcon, NextIcon, PauseIcon, PlayIcon, ResyncIcon, VideoIcon, VideoOffIcon } from './icons';
 import { FloatingReactions, ReactionBar, type FloatingReaction } from './Reactions';
 import { Scrubber } from './Scrubber';
 
@@ -28,21 +29,58 @@ interface Props {
   onReact: (emoji: Reaction) => void;
 }
 
-/** Audio-only: a dot-matrix meter grooving to the shared playback position (same on every device). */
+/**
+ * Audio-only: a dot-matrix meter grooving to the shared playback position (same on
+ * every device), or, if you opt in, to the real sound your microphone hears.
+ * Unmounting (video shown, track gone, leaving) releases the mic.
+ */
 function AudioOnlyArt({ videoId, playing, getPosition }: { videoId: string; playing: boolean; getPosition: () => number }) {
+  const mic = useMicLevels();
+  const { read } = mic;
   const cache = useRef<{ key: string; groove: Groove } | null>(null);
   const source = useCallback<LevelSource>(
     (cols) => {
+      const heard = read(cols);
+      if (heard) return heard;
       if (!playing) return null;
       const key = `${videoId}:${cols}`;
       if (cache.current?.key !== key) cache.current = { key, groove: groove(videoId, cols) };
       return grooveLevels(cache.current.groove, getPosition());
     },
-    [videoId, playing, getPosition],
+    [read, videoId, playing, getPosition],
+  );
+  const listening = mic.state === 'on';
+  const mode = mic.available ? (
+    <button
+      type="button"
+      onClick={listening ? mic.stop : () => void mic.start()}
+      disabled={mic.state === 'starting'}
+      aria-pressed={listening}
+      title={
+        listening
+          ? 'Reacting to what your microphone hears. Tap to go back to the synced groove.'
+          : mic.state === 'blocked'
+            ? 'The microphone is blocked for this site. Allow it in site settings, then tap again.'
+            : mic.state === 'missing'
+              ? 'No microphone available (none connected, or another app is using it). Tap to try again.'
+              : 'React to the real sound: listens through your microphone (works with speakers, not headphones)'
+      }
+      className={`-mr-1.5 inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 uppercase transition-colors hover:bg-line hover:text-ink ${listening ? 'text-bad' : ''}`}
+    >
+      <MicIcon size={12} />
+      {{ off: 'sync', starting: 'mic…', on: 'mic', blocked: 'mic blocked', missing: 'no mic' }[mic.state]}
+    </button>
+  ) : (
+    'sync'
   );
   return (
     <div className="h-44 border-b border-line bg-sunken px-4 pt-5 pb-3.5 sm:h-52 sm:px-6">
-      <DotMatrix source={source} label={playing ? 'audio only' : 'paused'} mode="sync" status={playing ? 'live' : 'idle'} />
+      <DotMatrix
+        source={source}
+        label={listening ? 'mic capture' : playing ? 'audio only' : 'paused'}
+        mode={mode}
+        status={listening ? 'rec' : playing ? 'live' : 'idle'}
+      />
     </div>
   );
 }

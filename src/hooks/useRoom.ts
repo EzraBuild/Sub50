@@ -95,6 +95,7 @@ export function useRoom(roomId: string, username: string) {
     () => ({
       changeVideo: (url: string) => client.send({ type: 'CHANGE_VIDEO', roomId, url }),
       queueAdd: (url: string, title?: string) => client.send({ type: 'QUEUE_ADD', roomId, url, ...(title ? { title } : {}) }),
+      queueAddMany: (items: { videoId: string; title?: string }[]) => client.send({ type: 'QUEUE_ADD_MANY', roomId, items }),
       queueRemove: (itemId: string) => client.send({ type: 'QUEUE_REMOVE', roomId, itemId }),
       queuePlay: (itemId: string) => client.send({ type: 'QUEUE_PLAY', roomId, itemId }),
       play: (timestamp: number) => client.send({ type: 'PLAY', roomId, timestamp }),

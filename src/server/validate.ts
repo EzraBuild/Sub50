@@ -7,6 +7,7 @@ const STATUSES: ReadonlySet<SyncStatus> = new Set<SyncStatus>([
 type Obj = Record<string, unknown>;
 
 const SESSION_ID = /^[A-Za-z0-9_-]{8,64}$/;
+const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown, max: number): string | null =>
@@ -59,6 +60,17 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       const title = data.title === undefined ? undefined : str(data.title, LIMITS.TITLE_MAX);
       if (title === null) return null;
       return { type: 'QUEUE_ADD', roomId, url, ...(title ? { title } : {}) };
+    }
+    case 'QUEUE_ADD_MANY': {
+      if (!Array.isArray(data.items) || data.items.length === 0 || data.items.length > LIMITS.BATCH_MAX) return null;
+      const items: { videoId: string; title?: string }[] = [];
+      for (const it of data.items) {
+        if (!isObj(it) || typeof it.videoId !== 'string' || !VIDEO_ID.test(it.videoId)) return null;
+        const title = it.title === undefined ? undefined : str(it.title, LIMITS.TITLE_MAX);
+        if (title === null) return null;
+        items.push({ videoId: it.videoId, ...(title ? { title } : {}) });
+      }
+      return { type: 'QUEUE_ADD_MANY', roomId, items };
     }
     case 'QUEUE_REMOVE':
     case 'QUEUE_PLAY': {

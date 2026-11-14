@@ -145,9 +145,12 @@ export default function Sub50App({ roomId }: { roomId: string }) {
             <Cross at="tl" className="hidden lg:block" />
             <Queue
               queue={state?.queue ?? []}
+              played={state?.played ?? []}
+              nowPlayingId={state?.videoId ?? null}
               disabled={!connected}
               onPlay={(id) => send(actions.queuePlay(id))}
               onRemove={(id) => send(actions.queueRemove(id))}
+              onRequeue={(item) => send(actions.queueAdd(`https://youtu.be/${item.videoId}`, item.title))}
             />
             <Chat
               messages={messages}

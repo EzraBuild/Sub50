@@ -21,6 +21,15 @@ export interface QueueItem {
   addedBy: string;
 }
 
+/** A track the room has played (newest first in RoomState.played). */
+export interface PlayedItem {
+  videoId: string;
+  title: string;
+  addedBy: string;
+  /** Server time (ms) the track was started. */
+  at: number;
+}
+
 export interface RoomState {
   roomId: string;
   videoId: string | null;
@@ -34,6 +43,8 @@ export interface RoomState {
   /** Server time (ms) when `lastTimestamp` is / becomes the live playhead. */
   updatedAt: number;
   queue: QueueItem[];
+  /** Last tracks the room played, newest first (absent on rooms created before this existed). */
+  played?: PlayedItem[];
   hostId: string;
   /** Version number: +1 on every committed change. Stores compare-and-swap on it. */
   seq: number;
@@ -148,6 +159,7 @@ export const REACTIONS = ['🔥', '❤️', '😂', '👏', '🤯', '🙌'] as c
 export type Reaction = (typeof REACTIONS)[number];
 
 export const LIMITS = {
+  PLAYED_MAX: 30,
   CHAT_MAX: 500,
   CHAT_HISTORY: 50,
   ROOM_ID: /^[a-z0-9-]{3,32}$/,

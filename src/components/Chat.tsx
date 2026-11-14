@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { LIMITS, type ChatMessage } from '../shared/protocol';
+import { Avatar } from './Avatar';
 import { SectionHead } from './Frame';
 import { SendIcon } from './icons';
 
@@ -79,15 +80,18 @@ export function Chat({ messages, typingNames, selfId, disabled, onSend, onTyping
               const grouped = prev && prev.peerId === m.peerId && m.at - prev.at < GROUP_MS;
               const mine = m.peerId === selfId;
               return (
-                <li key={m.id} className={grouped ? '' : 'pt-2 first:pt-0'}>
-                  {!grouped && (
-                    <p className="flex items-baseline gap-2">
-                      <span className={`text-[12.5px] font-semibold ${mine ? 'text-brand' : 'text-ink'}`}>{mine ? 'you' : m.name}</span>
-                      <span className="font-mono text-[10px] text-faint">{time(m.at)}</span>
-                    </p>
-                  )}
-                  {/* Rendered as text: React escapes it, nothing is interpreted as HTML. */}
-                  <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink-2 [overflow-wrap:anywhere]">{m.text}</p>
+                <li key={m.id} className={`flex gap-2.5 ${grouped ? '' : 'pt-2.5 first:pt-0'}`}>
+                  <span className="w-6 shrink-0">{!grouped && <Avatar id={m.peerId} name={m.name} size={24} className="mt-0.5" />}</span>
+                  <div className="min-w-0 flex-1">
+                    {!grouped && (
+                      <p className="flex items-baseline gap-2">
+                        <span className={`text-[12.5px] font-semibold ${mine ? 'text-brand' : 'text-ink'}`}>{mine ? 'you' : m.name}</span>
+                        <span className="font-mono text-[10px] text-faint">{time(m.at)}</span>
+                      </p>
+                    )}
+                    {/* Rendered as text: React escapes it, nothing is interpreted as HTML. */}
+                    <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink-2 [overflow-wrap:anywhere]">{m.text}</p>
+                  </div>
                 </li>
               );
             })}

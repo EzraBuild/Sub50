@@ -9,19 +9,20 @@ export const personId = (name: string) => `name:${name.toLowerCase()}`;
 
 const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
-/** That session's chat, fetched when opened. */
-function SessionChat({ sessionId }: { sessionId: string }) {
+export type ChatLoader = (sessionId: string) => Promise<SessionChatMessage[]>;
+
+/** That session's chat, loaded when opened. */
+function SessionChat({ sessionId, loadChat }: { sessionId: string; loadChat: ChatLoader }) {
   const [chat, setChat] = useState<SessionChatMessage[] | null | 'error'>(null);
   useEffect(() => {
     let alive = true;
-    fetch(`/api/history?sessionId=${encodeURIComponent(sessionId)}`, { cache: 'no-store' })
-      .then((r) => (r.ok ? (r.json() as Promise<{ chat: SessionChatMessage[] }>) : Promise.reject(new Error())))
-      .then((d) => alive && setChat(d.chat))
+    loadChat(sessionId)
+      .then((c) => alive && setChat(c))
       .catch(() => alive && setChat('error'));
     return () => {
       alive = false;
     };
-  }, [sessionId]);
+  }, [sessionId, loadChat]);
   if (chat === null) return <p className="mt-3 font-mono text-[11px] text-faint">loading chat…</p>;
   if (chat === 'error') return <p className="mt-3 font-mono text-[11px] text-bad">Couldn’t load this chat.</p>;
   if (chat.length === 0) return <p className="mt-3 font-mono text-[11px] text-faint">No messages while you were there.</p>;
@@ -44,7 +45,7 @@ function SessionChat({ sessionId }: { sessionId: string }) {
   );
 }
 
-function SessionRow({ session, onRemove }: { session: ListeningSession; onRemove: () => void }) {
+function SessionRow({ session, onRemove, loadChat }: { session: ListeningSession; onRemove: () => void; loadChat: ChatLoader }) {
   const [open, setOpen] = useState(false);
   const shown = session.people.slice(0, 6);
   return (
@@ -102,16 +103,16 @@ function SessionRow({ session, onRemove }: { session: ListeningSession; onRemove
       >
         {open ? 'hide chat' : 'show chat'}
       </button>
-      {open && <SessionChat sessionId={session.id} />}
+      {open && <SessionChat sessionId={session.id} loadChat={loadChat} />}
     </li>
   );
 }
 
-export function RoomsTab({ sessions, onRemove }: { sessions: ListeningSession[]; onRemove: (id: string) => void }) {
+export function RoomsTab({ sessions, onRemove, loadChat }: { sessions: ListeningSession[]; onRemove: (id: string) => void; loadChat: ChatLoader }) {
   return (
     <ol className="divide-y divide-line">
       {sessions.map((s) => (
-        <SessionRow key={s.id} session={s} onRemove={() => onRemove(s.id)} />
+        <SessionRow key={s.id} session={s} onRemove={() => onRemove(s.id)} loadChat={loadChat} />
       ))}
     </ol>
   );

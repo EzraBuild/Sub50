@@ -260,8 +260,8 @@ export default function Sub50App({ roomId }: { roomId: string }) {
       <ShortcutSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
       {/* Signing in mid-session renames you in the room. */}
       {authEnabled && entered && <AccountNameSync onName={setName} />}
-      {/* Your visit is logged to your account's history (only sent while signed in). */}
-      {authEnabled && entered && <HistoryTracker roomId={roomId} state={state} peers={peers} selfId={selfId} selfName={name} messages={messages} serverNow={() => client.clock.serverNow()} />}
+      {/* Your visit goes to your activity: your account when signed in, otherwise this device. */}
+      {entered && <HistoryTracker roomId={roomId} state={state} peers={peers} selfId={selfId} selfName={name} messages={messages} serverNow={() => client.clock.serverNow()} />}
       <DropZone
         enabled={entered && connected}
         onPlayNow={(url) => send(actions.changeVideo(url))}

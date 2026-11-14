@@ -2,18 +2,19 @@
 
 import { SignInButton, useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { ListeningSession, PersonSummary } from '../../server/accounts/history';
+import type { ListeningSession, PersonSummary, SessionChatMessage } from '../../server/accounts/history';
 import { thumbnailUrl } from '../../shared/youtube';
 import { newRoomId } from '../../shared/room';
 import { authEnabled } from '../../lib/auth-config';
-import { formatMinutes, formatWhen, listenUrl, summarizeTracks } from '../../lib/activity';
+import { formatMinutes, formatWhen, listenUrl, summarizePeople, summarizeTracks } from '../../lib/activity';
+import { loadLocal, removeLocal } from '../../lib/localHistory';
 import { FavoritesProvider } from '../../hooks/useFavorites';
 import { Avatar } from '../Avatar';
 import { FavoriteButton } from '../FavoriteButton';
 import { ToastView } from '../Gate';
 import { PlayIcon } from '../icons';
 import { PlaylistsTab } from './PlaylistsTab';
-import { RoomsTab, personId } from './RoomsTab';
+import { RoomsTab, personId, type ChatLoader } from './RoomsTab';
 import { TopBar } from './TopBar';
 
 interface HistoryData {
@@ -85,10 +86,74 @@ function PeopleTab({ people }: { people: PersonSummary[] }) {
   );
 }
 
+const apiChat: ChatLoader = (sessionId) =>
+  fetch(`/api/history?sessionId=${encodeURIComponent(sessionId)}`, { cache: 'no-store' })
+    .then((r) => (r.ok ? (r.json() as Promise<{ chat: SessionChatMessage[] }>) : Promise.reject(new Error())))
+    .then((d) => d.chat);
+
+const localChat: ChatLoader = async (sessionId) => loadLocal().chats[sessionId] ?? [];
+
+interface TabsProps {
+  data: HistoryData | null;
+  onRemove: (sessionId: string) => void;
+  loadChat: ChatLoader;
+  /** The playlists tab body; null hides the tab (no accounts on this server). */
+  playlists: ReactNode | null;
+  notice?: ReactNode;
+}
+
+/** Rooms / songs / playlists / people, from whichever history (account or this device). */
+function ActivityTabs({ data, onRemove, loadChat, playlists, notice }: TabsProps) {
+  const tabs = TABS.filter((t) => t !== 'playlists' || playlists !== null);
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = tabFromHash();
+    return tabs.includes(t) ? t : 'rooms';
+  });
+  const choose = (t: Tab) => {
+    setTab(t);
+    history.replaceState(null, '', `#${t}`);
+  };
+  const counts: Partial<Record<Tab, number>> | null = data ? { rooms: data.sessions.length, songs: summarizeTracks(data.sessions).length, people: data.people.length } : null;
+
+  return (
+    <>
+      {notice}
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-line px-4 py-2 sm:px-6" role="tablist" aria-label="Activity">
+        {tabs.map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="tab"
+            aria-selected={tab === t}
+            onClick={() => choose(t)}
+            className={`rounded-md px-2.5 py-1.5 font-mono text-[11.5px] tracking-[0.04em] uppercase transition-colors ${tab === t ? 'bg-ink text-canvas' : 'text-muted hover:bg-sunken hover:text-ink'}`}
+          >
+            {t}
+            {counts?.[t] !== undefined && <span className="ml-1.5 opacity-60">{counts[t]}</span>}
+          </button>
+        ))}
+      </div>
+      {tab === 'playlists' ? (
+        playlists
+      ) : !data ? (
+        <p className="label p-6">loading…</p>
+      ) : tab === 'rooms' ? (
+        data.sessions.length ? (
+          <RoomsTab sessions={data.sessions} onRemove={onRemove} loadChat={loadChat} />
+        ) : (
+          <Empty title="nothing yet">Rooms you listen in for a minute or more show up here, with who was there, the songs and the chat.</Empty>
+        )
+      ) : tab === 'songs' ? (
+        <SongsTab sessions={data.sessions} />
+      ) : (
+        <PeopleTab people={data.people} />
+      )}
+    </>
+  );
+}
+
 function SignedInActivity({ notify }: { notify: (message: string) => void }) {
   const [data, setData] = useState<HistoryData | null>(null);
-  const [tab, setTab] = useState<Tab>(tabFromHash);
-
   useEffect(() => {
     let alive = true;
     fetch('/api/history', { cache: 'no-store' })
@@ -104,11 +169,6 @@ function SignedInActivity({ notify }: { notify: (message: string) => void }) {
     };
   }, [notify]);
 
-  const choose = (t: Tab) => {
-    setTab(t);
-    history.replaceState(null, '', `#${t}`);
-  };
-
   const remove = (sessionId: string) => {
     setData((prev) => (prev ? { ...prev, sessions: prev.sessions.filter((s) => s.id !== sessionId) } : prev));
     fetch(`/api/history?sessionId=${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
@@ -118,59 +178,50 @@ function SignedInActivity({ notify }: { notify: (message: string) => void }) {
       .catch(() => notify('Could not remove that session.'));
   };
 
-  const counts: Partial<Record<Tab, number>> | null = data ? { rooms: data.sessions.length, songs: summarizeTracks(data.sessions).length, people: data.people.length } : null;
+  return <ActivityTabs data={data} onRemove={remove} loadChat={apiChat} playlists={<PlaylistsTab notify={notify} />} />;
+}
 
-  return (
-    <>
-      <div className="flex items-center gap-1 overflow-x-auto border-b border-line px-4 py-2 sm:px-6" role="tablist" aria-label="Activity">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => choose(t)}
-            className={`rounded-md px-2.5 py-1.5 font-mono text-[11.5px] tracking-[0.04em] uppercase transition-colors ${tab === t ? 'bg-ink text-canvas' : 'text-muted hover:bg-sunken hover:text-ink'}`}
-          >
-            {t}
-            {counts?.[t] !== undefined && <span className="ml-1.5 opacity-60">{counts[t]}</span>}
-          </button>
-        ))}
-      </div>
-      {tab === 'playlists' ? (
-        <PlaylistsTab notify={notify} />
-      ) : !data ? (
-        <p className="label p-6">loading…</p>
-      ) : tab === 'rooms' ? (
-        data.sessions.length ? (
-          <RoomsTab sessions={data.sessions} onRemove={remove} />
-        ) : (
-          <Empty title="nothing yet">Rooms you listen in for a minute or more show up here, with who was there, the songs and the chat.</Empty>
-        )
-      ) : tab === 'songs' ? (
-        <SongsTab sessions={data.sessions} />
-      ) : (
-        <PeopleTab people={data.people} />
-      )}
-    </>
+const fromDevice = (): HistoryData => {
+  const { sessions } = loadLocal();
+  return { sessions, people: summarizePeople(sessions) };
+};
+
+/** Signed out, or a server without accounts: what this browser remembers. */
+function DeviceActivity({ canSignIn }: { canSignIn: boolean }) {
+  const [data, setData] = useState<HistoryData>(fromDevice);
+  const remove = (sessionId: string) => {
+    removeLocal(sessionId);
+    setData(fromDevice());
+  };
+  const signIn = (
+    <SignInButton mode="modal">
+      <button type="button" className="btn h-8 shrink-0 px-3 text-xs">
+        Sign in
+      </button>
+    </SignInButton>
   );
+  const notice = (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-sunken px-4 py-3 sm:px-6">
+      <p className="text-[12.5px] text-muted">
+        <span className="font-medium text-ink-2">Saved on this device only.</span>{' '}
+        {canSignIn ? 'Sign in to keep it on every device; what’s here comes with you.' : 'Clearing your browser data clears it.'}
+      </p>
+      {canSignIn && signIn}
+    </div>
+  );
+  const playlists = canSignIn ? (
+    <Empty title="playlists">
+      <p>Sign in to make playlists, keep them private or share the link with friends.</p>
+      <div className="mt-4 flex justify-center">{signIn}</div>
+    </Empty>
+  ) : null;
+  return <ActivityTabs data={data} onRemove={remove} loadChat={localChat} playlists={playlists} notice={notice} />;
 }
 
 function Activity({ notify }: { notify: (message: string) => void }) {
   const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) return <p className="label p-6">checking account…</p>;
-  if (!isSignedIn)
-    return (
-      <Empty title="your activity">
-        <p>Sign in to keep every room, the people, the songs and the chat — on all your devices.</p>
-        <SignInButton mode="modal">
-          <button type="button" className="btn mt-4 h-9 px-3 text-xs">
-            Sign in
-          </button>
-        </SignInButton>
-      </Empty>
-    );
-  return <SignedInActivity notify={notify} />;
+  return isSignedIn ? <SignedInActivity notify={notify} /> : <DeviceActivity canSignIn />;
 }
 
 /** /me: everything you've done in Sub50. */
@@ -197,7 +248,7 @@ export default function ActivityPage() {
             <Activity notify={notify} />
           </FavoritesProvider>
         ) : (
-          <Empty title="accounts are off">This server runs without accounts, so there’s no activity to show.</Empty>
+          <DeviceActivity canSignIn={false} />
         )}
       </main>
       {toast && <ToastView message={toast} />}

@@ -1,6 +1,7 @@
 import { SignInButton } from '@clerk/nextjs';
 import { useState } from 'react';
 import { useFavorites } from '../hooks/useFavorites';
+import { AddToPlaylist } from './AddToPlaylist';
 import type { PlayedItem, QueueItem } from '../shared/protocol';
 import { thumbnailUrl } from '../shared/youtube';
 import { SectionHead } from './Frame';
@@ -18,6 +19,7 @@ interface Props {
   /** Play a saved track now / add it to the queue. */
   onPlayTrack: (videoId: string) => void;
   onQueueTrack: (videoId: string, title: string) => void;
+  notify: (message: string) => void;
 }
 
 /** Compact 24h time so the column never wraps ("15:58", not "03:58 PM"). */
@@ -31,7 +33,7 @@ function Thumb({ videoId }: { videoId: string }) {
   );
 }
 
-export function Queue({ queue, played, nowPlayingId, disabled, onPlay, onRemove, onRequeue, onPlayTrack, onQueueTrack }: Props) {
+export function Queue({ queue, played, nowPlayingId, disabled, onPlay, onRemove, onRequeue, onPlayTrack, onQueueTrack, notify }: Props) {
   const [tab, setTab] = useState<'next' | 'played' | 'saved'>('next');
   const fav = useFavorites();
   // The first played entry is the track on the deck right now; history starts after it.
@@ -133,6 +135,7 @@ export function Queue({ queue, played, nowPlayingId, disabled, onPlay, onRemove,
                   <span className="block truncate text-[13px] font-medium text-ink">{item.title || item.videoId}</span>
                   <span className="block truncate font-mono text-[10.5px] text-muted">by {item.addedBy}</span>
                 </span>
+                <AddToPlaylist videoId={item.videoId} title={item.title} notify={notify} />
                 <button
                   type="button"
                   disabled={disabled}
@@ -193,6 +196,7 @@ export function Queue({ queue, played, nowPlayingId, disabled, onPlay, onRemove,
                 >
                   <PlusIcon size={15} />
                 </button>
+                <AddToPlaylist videoId={item.videoId} title={item.title} notify={notify} />
                 <button
                   type="button"
                   onClick={() => fav.toggle(item.videoId, item.title)}

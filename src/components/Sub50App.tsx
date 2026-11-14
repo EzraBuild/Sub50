@@ -207,6 +207,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
               onVoteSkip={voteSkip}
               reactions={reactions}
               onReact={(emoji) => send(actions.react(emoji))}
+              notify={notify}
             />
             <SyncScope peers={peers} selfId={selfId} self={{ driftMs: sync.telemetry.driftMs, status }} />
           </div>
@@ -222,6 +223,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
               onRequeue={(item) => send(actions.queueAdd(`https://youtu.be/${item.videoId}`, item.title))}
               onPlayTrack={(videoId) => send(actions.changeVideo(`https://youtu.be/${videoId}`))}
               onQueueTrack={(videoId, title) => send(actions.queueAdd(`https://youtu.be/${videoId}`, title))}
+              notify={notify}
             />
             <Chat
               messages={messages}

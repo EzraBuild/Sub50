@@ -12,6 +12,7 @@ import { BlockedOverlay, Gate, ToastView } from './Gate';
 import { Header } from './Header';
 import { Peers } from './Peers';
 import { Queue } from './Queue';
+import { DropZone } from './DropZone';
 import { ShortcutSheet, useShortcuts } from './Shortcuts';
 import { SyncScope } from './SyncScope';
 import { UrlBar } from './UrlBar';
@@ -211,6 +212,12 @@ export default function Sub50App({ roomId }: { roomId: string }) {
       {entered && sync.blocked && <BlockedOverlay onTap={sync.unlock} />}
       {visibleToast && <ToastView message={visibleToast} />}
       <ShortcutSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <DropZone
+        enabled={entered && connected}
+        onPlayNow={(url) => send(actions.changeVideo(url))}
+        onQueue={(url) => send(actions.queueAdd(url))}
+        onReject={notify}
+      />
     </div>
   );
 }

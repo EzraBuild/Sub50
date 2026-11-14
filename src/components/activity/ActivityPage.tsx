@@ -13,6 +13,7 @@ import { Avatar } from '../Avatar';
 import { FavoriteButton } from '../FavoriteButton';
 import { ToastView } from '../Gate';
 import { PlayIcon } from '../icons';
+import { ExportMenu } from './ExportMenu';
 import { PlaylistsTab } from './PlaylistsTab';
 import { RoomsTab, personId, type ChatLoader } from './RoomsTab';
 import { TopBar } from './TopBar';
@@ -100,10 +101,11 @@ interface TabsProps {
   /** The playlists tab body; null hides the tab (no accounts on this server). */
   playlists: ReactNode | null;
   notice?: ReactNode;
+  notify: (message: string) => void;
 }
 
 /** Rooms / songs / playlists / people, from whichever history (account or this device). */
-function ActivityTabs({ data, onRemove, loadChat, playlists, notice }: TabsProps) {
+function ActivityTabs({ data, onRemove, loadChat, playlists, notice, notify }: TabsProps) {
   const tabs = TABS.filter((t) => t !== 'playlists' || playlists !== null);
   const [tab, setTab] = useState<Tab>(() => {
     const t = tabFromHash();
@@ -118,20 +120,24 @@ function ActivityTabs({ data, onRemove, loadChat, playlists, notice }: TabsProps
   return (
     <>
       {notice}
-      <div className="flex items-center gap-1 overflow-x-auto border-b border-line px-4 py-2 sm:px-6" role="tablist" aria-label="Activity">
-        {tabs.map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => choose(t)}
-            className={`rounded-md px-2.5 py-1.5 font-mono text-[11.5px] tracking-[0.04em] uppercase transition-colors ${tab === t ? 'bg-ink text-canvas' : 'text-muted hover:bg-sunken hover:text-ink'}`}
-          >
-            {t}
-            {counts?.[t] !== undefined && <span className="ml-1.5 opacity-60">{counts[t]}</span>}
-          </button>
-        ))}
+      {/* The export menu sits outside the scrolling tab strip so its dropdown isn't clipped. */}
+      <div className="flex items-center gap-2 border-b border-line px-4 py-2 sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" role="tablist" aria-label="Activity">
+          {tabs.map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => choose(t)}
+              className={`rounded-md px-2.5 py-1.5 font-mono text-[11.5px] tracking-[0.04em] uppercase transition-colors ${tab === t ? 'bg-ink text-canvas' : 'text-muted hover:bg-sunken hover:text-ink'}`}
+            >
+              {t}
+              {counts?.[t] !== undefined && <span className="ml-1.5 opacity-60">{counts[t]}</span>}
+            </button>
+          ))}
+        </div>
+        {data && <ExportMenu sessions={data.sessions} loadChat={loadChat} notify={notify} />}
       </div>
       {tab === 'playlists' ? (
         playlists
@@ -178,7 +184,7 @@ function SignedInActivity({ notify }: { notify: (message: string) => void }) {
       .catch(() => notify('Could not remove that session.'));
   };
 
-  return <ActivityTabs data={data} onRemove={remove} loadChat={apiChat} playlists={<PlaylistsTab notify={notify} />} />;
+  return <ActivityTabs data={data} onRemove={remove} loadChat={apiChat} playlists={<PlaylistsTab notify={notify} />} notify={notify} />;
 }
 
 const fromDevice = (): HistoryData => {
@@ -187,7 +193,7 @@ const fromDevice = (): HistoryData => {
 };
 
 /** Signed out, or a server without accounts: what this browser remembers. */
-function DeviceActivity({ canSignIn }: { canSignIn: boolean }) {
+function DeviceActivity({ canSignIn, notify }: { canSignIn: boolean; notify: (message: string) => void }) {
   const [data, setData] = useState<HistoryData>(fromDevice);
   const remove = (sessionId: string) => {
     removeLocal(sessionId);
@@ -215,13 +221,13 @@ function DeviceActivity({ canSignIn }: { canSignIn: boolean }) {
       <div className="mt-4 flex justify-center">{signIn}</div>
     </Empty>
   ) : null;
-  return <ActivityTabs data={data} onRemove={remove} loadChat={localChat} playlists={playlists} notice={notice} />;
+  return <ActivityTabs data={data} onRemove={remove} loadChat={localChat} playlists={playlists} notice={notice} notify={notify} />;
 }
 
 function Activity({ notify }: { notify: (message: string) => void }) {
   const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) return <p className="label p-6">checking account…</p>;
-  return isSignedIn ? <SignedInActivity notify={notify} /> : <DeviceActivity canSignIn />;
+  return isSignedIn ? <SignedInActivity notify={notify} /> : <DeviceActivity canSignIn notify={notify} />;
 }
 
 /** /me: everything you've done in Sub50. */
@@ -248,7 +254,7 @@ export default function ActivityPage() {
             <Activity notify={notify} />
           </FavoritesProvider>
         ) : (
-          <DeviceActivity canSignIn={false} />
+          <DeviceActivity canSignIn={false} notify={notify} />
         )}
       </main>
       {toast && <ToastView message={toast} />}

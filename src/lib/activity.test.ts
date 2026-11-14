@@ -26,6 +26,10 @@ test('songs across sessions: play counts, latest room, newest first, first real 
   );
 });
 
+test('within one session, the later song is the more recent', () => {
+  assert.deepEqual(summarizeTracks([s('a', 'jam', 1000, [[V1, ''], [V2, '']])]).map((x) => x.videoId), [V2, V1]);
+});
+
 test('durations and dates read naturally', () => {
   assert.equal(formatMinutes(0.4), '1 min');
   assert.equal(formatMinutes(47.2), '47 min');

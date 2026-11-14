@@ -1,7 +1,8 @@
 import type { Peer } from '../shared/protocol';
 import { SectionHead } from './Frame';
 import { CrownIcon } from './icons';
-import { STATUS_META, StatusDot } from './TelemetryPill';
+import { Avatar } from './Avatar';
+import { STATUS_META } from './TelemetryPill';
 
 interface Props {
   peers: Peer[];
@@ -19,7 +20,7 @@ export function Peers({ peers, selfId, hostId }: Props) {
           const meta = STATUS_META[p.status];
           return (
             <li key={p.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
-              <StatusDot status={p.status} />
+              <Avatar id={p.id} name={p.name} size={30} status={p.status} />
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5 truncate text-[13px] font-medium text-ink">
                   {p.name}

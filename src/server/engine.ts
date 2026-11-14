@@ -49,6 +49,7 @@ export function createRoom(roomId: string, hostId: string, now: number, epoch: s
     lastTimestamp: 0,
     updatedAt: now,
     queue: [],
+    played: [],
     hostId,
     seq: 0,
   };
@@ -66,7 +67,11 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
     state: { ...s, seq: state.seq + 1 },
     ...(resolveTitle ? { resolveTitle } : {}),
   });
-  const startTrack = (item: Pick<QueueItem, 'videoId' | 'title'>) => {
+  const startTrack = (item: Pick<QueueItem, 'videoId' | 'title'> & { addedBy?: string }) => {
+    s.played = [{ videoId: item.videoId, title: item.title, addedBy: item.addedBy ?? ctx.peerName, at: ctx.now }, ...(s.played ?? [])].slice(
+      0,
+      LIMITS.PLAYED_MAX,
+    );
     s.videoId = item.videoId;
     s.title = item.title || null;
     s.trackId = ctx.newId();
@@ -160,11 +165,13 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
 export function applyTitle(state: RoomState, videoId: string, title: string): RoomState | null {
   const currentNeeds = state.videoId === videoId && !state.title;
   const queueNeeds = state.queue.some((q) => q.videoId === videoId && !q.title);
-  if (!currentNeeds && !queueNeeds) return null;
+  const playedNeeds = (state.played ?? []).some((p) => p.videoId === videoId && !p.title);
+  if (!currentNeeds && !queueNeeds && !playedNeeds) return null;
   return {
     ...state,
     title: currentNeeds ? title : state.title,
     queue: state.queue.map((q) => (q.videoId === videoId && !q.title ? { ...q, title } : q)),
+    played: (state.played ?? []).map((p) => (p.videoId === videoId && !p.title ? { ...p, title } : p)),
     seq: state.seq + 1,
   };
 }

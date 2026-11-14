@@ -107,3 +107,28 @@ test('withHost only commits a real change', () => {
   assert.equal(withHost(s, 'h'), null);
   assert.deepEqual([withHost(s, 'x')!.hostId, withHost(s, 'x')!.seq], ['x', 1]);
 });
+
+test('played log records every track start, newest first, capped, with titles back-filled', () => {
+  let s = createRoom('jam', 'h', NOW, 'e1');
+  s = changed(run(s, { type: 'CHANGE_VIDEO', url: A }));
+  s = changed(run(s, { type: 'QUEUE_ADD', url: B, title: 'B side' }));
+  s = changed(run(s, { type: 'TRACK_ENDED', trackId: s.trackId! }, NOW + 60_000));
+  assert.deepEqual(s.played!.map((p) => [p.videoId, p.title, p.addedBy]), [
+    ['bbbbbbbbbbb', 'B side', 'Ada'],
+    ['aaaaaaaaaaa', '', 'Ada'],
+  ]);
+  assert.equal(s.played![0]!.at, NOW + 60_000);
+
+  const titled = applyTitle(s, 'aaaaaaaaaaa', 'Song A')!;
+  assert.equal(titled.played![1]!.title, 'Song A', 'resolved title reaches the played log too');
+
+  for (let i = 0; i < 40; i++) s = changed(run(s, { type: 'CHANGE_VIDEO', url: A }));
+  assert.equal(s.played!.length, 30, 'capped');
+});
+
+test('rooms created before the played log existed keep working', () => {
+  const legacy = { ...createRoom('jam', 'h', NOW, 'e1') } as Partial<RoomState>;
+  delete legacy.played;
+  const s = changed(run(legacy as RoomState, { type: 'CHANGE_VIDEO', url: A }));
+  assert.equal(s.played!.length, 1);
+});

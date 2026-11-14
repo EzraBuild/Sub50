@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Meter } from '../lib/beat';
 
 /** Target level (0..1) per column right now, or null when nothing is sounding. */
@@ -9,8 +9,8 @@ export type LevelSource = (cols: number) => number[] | null;
 interface Props {
   source: LevelSource;
   label: string;
-  /** Right-hand tag, e.g. SYNC or MIC. */
-  mode: string;
+  /** Right-hand tag or control, e.g. SYNC / MIC. */
+  mode: ReactNode;
   /** Status dot: live (playing), rec (capturing from the mic), idle. */
   status: 'live' | 'rec' | 'idle';
 }
@@ -133,7 +133,7 @@ export function DotMatrix({ source, label, mode, status }: Props) {
           <span className={`size-1.5 rounded-full ${STATUS_DOT[status]}`} />
           {label}
         </span>
-        <span className="text-ink-2 uppercase">{mode}</span>
+        <span className="flex items-center text-ink-2 uppercase">{mode}</span>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ClientMessage, Peer, RoomState, ServerMessage } from '../shared/protocol';
-import { PRESENCE, REACTION_LIMIT, SyncHub, TELEMETRY } from './hub';
+import { CHAT_LIMIT, normalizeChat, PRESENCE, REACTION_LIMIT, SyncHub, TELEMETRY, TYPING_THROTTLE_MS } from './hub';
 import { MemoryStore } from './store/memory';
 
 const A = 'https://youtu.be/aaaaaaaaaaa';
@@ -241,4 +241,51 @@ test('reactions fan out to every instance and a spam burst is capped', async () 
   c.tick(REACTION_LIMIT.WINDOW_MS + 1);
   await a.send({ type: 'REACT', roomId: 'jam', emoji: '🙌' });
   assert.equal(b.count('REACTION'), REACTION_LIMIT.MAX + 1, 'allowed again after the window');
+});
+
+test('chat reaches every instance and late joiners get the recent history', async () => {
+  const c = cluster(2);
+  const a = c.client('a', c.hubs[0]);
+  await a.join('jam', 'Ada', 'session-ada');
+  await a.send({ type: 'CHAT_SEND', roomId: 'jam', text: '  hello room  ' });
+  c.tick(1);
+  await a.send({ type: 'CHAT_SEND', roomId: 'jam', text: 'this track 🔥' });
+
+  const late = c.client('late', c.hubs[1]);
+  await late.join('jam', 'Late', 'session-late');
+  const history = late.last('CHAT_HISTORY')!.messages;
+  assert.deepEqual(history.map((m) => [m.name, m.text]), [['Ada', 'hello room'], ['Ada', 'this track 🔥']], 'oldest first, trimmed');
+
+  await late.send({ type: 'CHAT_SEND', roomId: 'jam', text: 'hey!' });
+  assert.equal(a.last('CHAT')!.message.text, 'hey!');
+  assert.equal(a.last('CHAT')!.message.peerId, 'session-late');
+});
+
+test('chat is rate limited, blank messages are dropped, typing is throttled', async () => {
+  const c = cluster(2);
+  const a = c.client('a', c.hubs[0]);
+  const b = c.client('b', c.hubs[1]);
+  await a.join('jam', 'Ada', 'session-ada');
+  await b.join('jam', 'Bo', 'session-bo');
+
+  await a.send({ type: 'CHAT_SEND', roomId: 'jam', text: '   \n\n  ' });
+  assert.equal(b.count('CHAT'), 0, 'blank after trim: dropped');
+  for (let i = 0; i < 8; i++) await a.send({ type: 'CHAT_SEND', roomId: 'jam', text: `msg ${i}` });
+  assert.equal(b.count('CHAT'), CHAT_LIMIT.MAX);
+  assert.match(a.last('ERROR')!.message, /slow down/i);
+
+  await a.send({ type: 'TYPING', roomId: 'jam' });
+  await a.send({ type: 'TYPING', roomId: 'jam' });
+  assert.equal(b.count('TYPING'), 1, 'second ping inside the throttle window is dropped');
+  c.tick(TYPING_THROTTLE_MS);
+  await a.send({ type: 'TYPING', roomId: 'jam' });
+  assert.equal(b.count('TYPING'), 2);
+});
+
+test('normalizeChat folds line endings, strips control characters, caps length', () => {
+  assert.equal(normalizeChat('a\r\nb\rc'), 'a\nb\nc');
+  assert.equal(normalizeChat('hi\u0000\u0007 there'), 'hi there');
+  assert.equal(normalizeChat('a\n\n\n\n\nb'), 'a\n\nb');
+  assert.equal(normalizeChat('x'.repeat(900)).length, 500);
+  assert.equal(normalizeChat('<b>not html</b>'), '<b>not html</b>', 'kept as text; the UI renders text, never HTML');
 });

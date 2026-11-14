@@ -32,7 +32,7 @@ const waitFor = async (cond: () => boolean, ms = 8_000) => {
 
 after(async () => {
   if (!configured) return;
-  for (const room of ['cas', 'sub', 'hubs', 'presence']) await stores[0]?.destroyRoom(room);
+  for (const room of ['cas', 'sub', 'hubs', 'presence', 'chat']) await stores[0]?.destroyRoom(room);
   await Promise.all(stores.map((s) => s.close()));
 });
 
@@ -110,4 +110,10 @@ test('peer removal is conditional on the owning connection', { skip }, async () 
   assert.deepEqual((await a.listPeers('presence')).map((p) => p.conn), ['conn-new']);
   await a.removePeer('presence', 'tab-1', 'conn-new');
   assert.equal((await a.listPeers('presence')).length, 0);
+});
+
+test('chat history is capped, oldest first', { skip }, async () => {
+  const a = make();
+  for (let i = 0; i < 5; i++) await a.appendChat('chat', { id: `m${i}`, peerId: 'p', name: 'Ada', text: `msg ${i}`, at: i }, 3);
+  assert.deepEqual((await a.listChat('chat')).map((m) => m.text), ['msg 2', 'msg 3', 'msg 4']);
 });

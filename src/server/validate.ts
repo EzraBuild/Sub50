@@ -69,6 +69,13 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       const trackId = str(data.trackId, 64);
       return trackId === null ? null : { type: 'TRACK_ENDED', roomId, trackId };
     }
+    case 'CHAT_SEND': {
+      // Raw length guard only; the hub normalizes and cuts to LIMITS.CHAT_MAX.
+      const text = str(data.text, LIMITS.CHAT_MAX * 4);
+      return text === null ? null : { type: 'CHAT_SEND', roomId, text };
+    }
+    case 'TYPING':
+      return { type: 'TYPING', roomId };
     case 'REACT': {
       return (REACTIONS as readonly unknown[]).includes(data.emoji) ? { type: 'REACT', roomId, emoji: data.emoji as Reaction } : null;
     }

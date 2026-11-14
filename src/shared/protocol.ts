@@ -53,6 +53,16 @@ export type SyncStatus =
   | 'blocked'
   | 'offline';
 
+export interface ChatMessage {
+  id: string;
+  peerId: string;
+  name: string;
+  /** Plain text, already trimmed and length-limited by the server. Render as text, never HTML. */
+  text: string;
+  /** Server time (ms). */
+  at: number;
+}
+
 export interface Peer {
   id: string;
   name: string;
@@ -80,7 +90,9 @@ export type ClientMessage =
   | { type: 'QUEUE_PLAY'; roomId: string; itemId: string }
   | { type: 'TRACK_ENDED'; roomId: string; trackId: string }
   | { type: 'REPORT'; roomId: string; driftMs: number | null; rttMs: number | null; status: SyncStatus }
-  | { type: 'REACT'; roomId: string; emoji: Reaction };
+  | { type: 'REACT'; roomId: string; emoji: Reaction }
+  | { type: 'CHAT_SEND'; roomId: string; text: string }
+  | { type: 'TYPING'; roomId: string };
 
 // ---------------------------------------------------------------------------
 // Server -> Client
@@ -95,6 +107,11 @@ export type ServerMessage =
   | { type: 'PEER_UPDATE'; roomId: string; peer: Peer }
   /** Ephemeral: never stored, just floated across every screen in the room. */
   | { type: 'REACTION'; roomId: string; id: string; peerId: string; name: string; emoji: Reaction }
+  | { type: 'CHAT'; roomId: string; message: ChatMessage }
+  /** Sent to a joiner: the room's recent messages, oldest first. */
+  | { type: 'CHAT_HISTORY'; roomId: string; messages: ChatMessage[] }
+  /** Ephemeral "is typing" ping; clients show it for a few seconds. */
+  | { type: 'TYPING'; roomId: string; peerId: string; name: string }
   | { type: 'ERROR'; message: string };
 
 // ---------------------------------------------------------------------------
@@ -131,6 +148,8 @@ export const REACTIONS = ['🔥', '❤️', '😂', '👏', '🤯', '🙌'] as c
 export type Reaction = (typeof REACTIONS)[number];
 
 export const LIMITS = {
+  CHAT_MAX: 500,
+  CHAT_HISTORY: 50,
   ROOM_ID: /^[a-z0-9-]{3,32}$/,
   NAME_MAX: 24,
   URL_MAX: 512,

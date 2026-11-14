@@ -154,3 +154,10 @@ export const MonitorIcon = (p: IconProps) => (
     <path d="M8.5 20.5h7M12 16.5v4" />
   </Svg>
 );
+
+export const SendIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 12 20 4l-4.5 16-3.5-6.5L4 12Z" />
+    <path d="m12 13.5 3.5-3.5" />
+  </Svg>
+);

@@ -5,6 +5,7 @@ import { useRoom } from '../hooks/useRoom';
 import { useYouTubeSync } from '../hooks/useYouTubeSync';
 import { loadName, saveName, shareUrl } from '../lib/identity';
 import { AudioDeck } from './AudioDeck';
+import { Chat } from './Chat';
 import { Cross } from './Frame';
 import { BlockedOverlay, Gate, ToastView } from './Gate';
 import { Header } from './Header';
@@ -35,7 +36,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
   const [entered, setEntered] = useState(false);
   const [showVideo, setShowVideo] = useState(loadVideoPref);
 
-  const { client, state, peers, connection, rttMs, selfId, lanAddresses, toast, notify, actions, reactions } = useRoom(roomId, name);
+  const { client, state, peers, connection, rttMs, selfId, lanAddresses, toast, notify, actions, reactions, messages, typingNames } = useRoom(roomId, name);
   const sync = useYouTubeSync(client, state);
   const connected = connection === 'open';
 
@@ -147,6 +148,18 @@ export default function Sub50App({ roomId }: { roomId: string }) {
               disabled={!connected}
               onPlay={(id) => send(actions.queuePlay(id))}
               onRemove={(id) => send(actions.queueRemove(id))}
+            />
+            <Chat
+              messages={messages}
+              typingNames={typingNames}
+              selfId={selfId}
+              disabled={!connected}
+              onSend={(text) => {
+                const ok = actions.chat(text);
+                send(ok);
+                return ok;
+              }}
+              onTyping={actions.typing}
             />
             <Peers peers={peers} selfId={selfId} hostId={state?.hostId ?? null} />
           </aside>

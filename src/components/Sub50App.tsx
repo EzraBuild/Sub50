@@ -35,7 +35,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
   const [entered, setEntered] = useState(false);
   const [showVideo, setShowVideo] = useState(loadVideoPref);
 
-  const { client, state, peers, connection, rttMs, selfId, lanAddresses, toast, notify, actions } = useRoom(roomId, name);
+  const { client, state, peers, connection, rttMs, selfId, lanAddresses, toast, notify, actions, reactions } = useRoom(roomId, name);
   const sync = useYouTubeSync(client, state);
   const connected = connection === 'open';
 
@@ -135,6 +135,8 @@ export default function Sub50App({ roomId }: { roomId: string }) {
               onSeek={(t) => send(actions.seek(t))}
               onResync={sync.resync}
               onNext={() => state?.queue[0] && send(actions.queuePlay(state.queue[0].id))}
+              reactions={reactions}
+              onReact={(emoji) => send(actions.react(emoji))}
             />
             <SyncScope peers={peers} selfId={selfId} self={{ driftMs: sync.telemetry.driftMs, status }} />
           </div>

@@ -183,6 +183,39 @@
   animation-play-state: paused;
 }
 
+/* Reactions drift up with a little sideways sway, then fade. */
+@keyframes reaction-float {
+  0% {
+    transform: translate(-50%, 0) scale(0.5);
+    opacity: 0;
+  }
+  12% {
+    transform: translate(calc(-50% + var(--sway) * 0.2), -20px) scale(1.15);
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--sway)), -240px) scale(0.9);
+    opacity: 0;
+  }
+}
+.reaction-float {
+  animation: reaction-float 2.6s cubic-bezier(0.2, 0.6, 0.3, 1) forwards;
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -40px);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -40px);
+  }
+}
+
 /* Sync scope: a slow sweep across the ruler. */
 @keyframes scope-scan {
   0% {
@@ -251,6 +284,10 @@
   .eq-bar,
   .scope-scan {
     animation: none;
+  }
+  .reaction-float {
+    animation-duration: 1.2s;
+    animation-name: fade-out;
   }
   body {
     transition: none;

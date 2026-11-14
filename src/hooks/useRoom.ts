@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Peer, RoomState } from '../shared/protocol';
+import type { Peer, Reaction, RoomState } from '../shared/protocol';
+import type { FloatingReaction } from '../components/Reactions';
 import { getSessionId } from '../lib/identity';
 import { SyncClient, type ConnectionStatus } from '../lib/sync-client';
 
@@ -19,6 +20,7 @@ export function useRoom(roomId: string, username: string) {
   const selfId = client.sessionId;
   const [lanAddresses, setLanAddresses] = useState<string[]>([]);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [reactions, setReactions] = useState<FloatingReaction[]>([]);
 
   useEffect(() => {
     const offMsg = client.onMessage((msg) => {
@@ -38,6 +40,12 @@ export function useRoom(roomId: string, username: string) {
         case 'PEERS':
           setPeers(msg.peers);
           break;
+        case 'REACTION': {
+          const r: FloatingReaction = { id: msg.id, emoji: msg.emoji, name: msg.name, x: 12 + Math.random() * 76, sway: (Math.random() - 0.5) * 90 };
+          setReactions((prev) => [...prev.slice(-29), r]);
+          setTimeout(() => setReactions((prev) => prev.filter((p) => p.id !== r.id)), 2700);
+          break;
+        }
         case 'PEER_UPDATE':
           setPeers((prev) => prev.map((p) => (p.id === msg.peer.id ? msg.peer : p)));
           break;
@@ -72,11 +80,12 @@ export function useRoom(roomId: string, username: string) {
       play: (timestamp: number) => client.send({ type: 'PLAY', roomId, timestamp }),
       pause: (timestamp: number) => client.send({ type: 'PAUSE', roomId, timestamp }),
       seek: (timestamp: number) => client.send({ type: 'SEEK', roomId, timestamp }),
+      react: (emoji: Reaction) => client.send({ type: 'REACT', roomId, emoji }),
     }),
     [client, roomId],
   );
 
   const notify = (message: string) => setToast({ id: Date.now(), message });
 
-  return { client, state, peers, connection, rttMs, selfId, lanAddresses, toast, notify, actions };
+  return { client, state, peers, connection, rttMs, selfId, lanAddresses, toast, notify, actions, reactions };
 }

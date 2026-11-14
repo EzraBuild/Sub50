@@ -79,7 +79,8 @@ export type ClientMessage =
   | { type: 'QUEUE_REMOVE'; roomId: string; itemId: string }
   | { type: 'QUEUE_PLAY'; roomId: string; itemId: string }
   | { type: 'TRACK_ENDED'; roomId: string; trackId: string }
-  | { type: 'REPORT'; roomId: string; driftMs: number | null; rttMs: number | null; status: SyncStatus };
+  | { type: 'REPORT'; roomId: string; driftMs: number | null; rttMs: number | null; status: SyncStatus }
+  | { type: 'REACT'; roomId: string; emoji: Reaction };
 
 // ---------------------------------------------------------------------------
 // Server -> Client
@@ -92,6 +93,8 @@ export type ServerMessage =
   | { type: 'PEERS'; roomId: string; peers: Peer[] }
   /** One peer's telemetry changed; cheaper than re-sending the whole list. */
   | { type: 'PEER_UPDATE'; roomId: string; peer: Peer }
+  /** Ephemeral: never stored, just floated across every screen in the room. */
+  | { type: 'REACTION'; roomId: string; id: string; peerId: string; name: string; emoji: Reaction }
   | { type: 'ERROR'; message: string };
 
 // ---------------------------------------------------------------------------
@@ -122,6 +125,10 @@ export const SYNC = {
   /** How long a nudge runs before we judge whether it is actually working. */
   NUDGE_VERIFY_MS: 2000,
 } as const;
+
+/** The reaction palette. A fixed set keeps the protocol and the UI simple, and stops arbitrary strings. */
+export const REACTIONS = ['🔥', '❤️', '😂', '👏', '🤯', '🙌'] as const;
+export type Reaction = (typeof REACTIONS)[number];
 
 export const LIMITS = {
   ROOM_ID: /^[a-z0-9-]{3,32}$/,

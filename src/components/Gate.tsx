@@ -10,7 +10,7 @@ import { ThemeToggle } from './ThemeToggle';
  * While a full-screen overlay is open, the app page behind it must not scroll,
  * or the browser shows that page's scrollbar beside the overlay.
  */
-function useScrollLock() {
+export function useScrollLock() {
   useEffect(() => {
     const root = document.documentElement;
     const previous = root.style.overflow;

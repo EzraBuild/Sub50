@@ -7,7 +7,9 @@ import { useYouTubeSync } from '../hooks/useYouTubeSync';
 import { loadName, saveName, shareUrl } from '../lib/identity';
 import { authEnabled } from '../lib/auth-config';
 import { FavoritesProvider } from '../hooks/useFavorites';
+import { HistoryProvider } from '../hooks/useHistory';
 import { HistoryTracker } from '../hooks/useListeningTracker';
+import { HistoryPanel } from './History';
 import { AccountNameSync } from './Account';
 import { AudioDeck } from './AudioDeck';
 import { Chat } from './Chat';
@@ -222,6 +224,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
       {authEnabled && entered && <AccountNameSync onName={setName} />}
       {/* Your visit is logged to your account's history (only sent while signed in). */}
       {authEnabled && entered && <HistoryTracker roomId={roomId} state={state} peers={peers} selfId={selfId} selfName={name} />}
+      {authEnabled && <HistoryPanel disabled={!connected} onQueue={(videoId, title) => send(actions.queueAdd(`https://youtu.be/${videoId}`, title))} />}
       <DropZone
         enabled={entered && connected}
         onPlayNow={(url) => send(actions.changeVideo(url))}
@@ -231,6 +234,12 @@ export default function Sub50App({ roomId }: { roomId: string }) {
     </div>
   );
 
-  // Favorites need an account; without Clerk on this server the provider is skipped entirely.
-  return authEnabled ? <FavoritesProvider onError={notify}>{page}</FavoritesProvider> : page;
+  // Favorites and history need an account; without Clerk on this server the providers are skipped entirely.
+  return authEnabled ? (
+    <FavoritesProvider onError={notify}>
+      <HistoryProvider onError={notify}>{page}</HistoryProvider>
+    </FavoritesProvider>
+  ) : (
+    page
+  );
 }

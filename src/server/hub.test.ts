@@ -307,3 +307,45 @@ test('vote to skip uses live presence across instances', async () => {
   await b.send({ type: 'VOTE_SKIP', roomId: 'jam', trackId: track, vote: true });
   assert.equal(d.state()!.videoId, 'bbbbbbbbbbb', '2 of 3 from two instances: skipped');
 });
+
+
+test('wait for everyone across instances: a stall on one pauses the room for all, ready resumes it', async () => {
+  const c = cluster(2);
+  const a = c.client('a', c.hubs[0]);
+  const b = c.client('b', c.hubs[1]);
+  await a.join('jam', 'Ada', 'session-ada');
+  await b.join('jam', 'Bo', 'session-bo');
+  await a.send({ type: 'CHANGE_VIDEO', roomId: 'jam', url: A });
+  c.tick(10_000); // well past the scheduled start
+
+  await a.send({ type: 'STALL', roomId: 'jam', stalled: true });
+  assert.deepEqual([b.state()!.isPlaying, b.state()!.waiting?.peers], [false, [{ id: 'session-ada', name: 'Ada' }]], 'Bo, on the other instance, waits for Ada');
+  await a.send({ type: 'STALL', roomId: 'jam', stalled: false });
+  assert.deepEqual([b.state()!.isPlaying, b.state()!.waiting], [true, null]);
+});
+
+test('wait for everyone: the timeout is driven by any listener, and a departed waiter is dropped', async () => {
+  const c = cluster(2);
+  const a = c.client('a', c.hubs[0]);
+  const b = c.client('b', c.hubs[1]);
+  await a.join('jam', 'Ada', 'session-ada');
+  await b.join('jam', 'Bo', 'session-bo');
+  await a.send({ type: 'CHANGE_VIDEO', roomId: 'jam', url: A });
+  c.tick(10_000);
+  await a.send({ type: 'STALL', roomId: 'jam', stalled: true });
+
+  await b.send({ type: 'WAIT_CHECK', roomId: 'jam' });
+  assert.equal(b.state()!.isPlaying, false, 'Ada is still here and within the timeout');
+  c.tick(15_000);
+  await b.send({ type: 'WAIT_CHECK', roomId: 'jam' });
+  assert.deepEqual([a.state()!.isPlaying, a.state()!.waiting], [true, null], 'timed out: playing again everywhere');
+
+  // Next: Ada stalls again on a new track, then her tab closes.
+  await b.send({ type: 'CHANGE_VIDEO', roomId: 'jam', url: B });
+  c.tick(10_000);
+  await a.send({ type: 'STALL', roomId: 'jam', stalled: true });
+  assert.equal(b.state()!.isPlaying, false);
+  await c.hubs[0]!.disconnect('a');
+  await b.send({ type: 'WAIT_CHECK', roomId: 'jam' });
+  assert.deepEqual([b.state()!.isPlaying, b.state()!.waiting], [true, null], 'Ada left: no one to wait for');
+});

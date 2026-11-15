@@ -77,6 +77,12 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       const itemId = str(data.itemId, 64);
       return itemId === null ? null : { type: data.type, roomId, itemId };
     }
+    case 'STALL':
+      return typeof data.stalled === 'boolean' ? { type: 'STALL', roomId, stalled: data.stalled } : null;
+    case 'WAIT_CHECK':
+      return { type: 'WAIT_CHECK', roomId };
+    case 'SET_WAIT_FOR_ALL':
+      return typeof data.on === 'boolean' ? { type: 'SET_WAIT_FOR_ALL', roomId, on: data.on } : null;
     case 'VOTE_SKIP': {
       const trackId = str(data.trackId, 64);
       return trackId === null || typeof data.vote !== 'boolean' ? null : { type: 'VOTE_SKIP', roomId, trackId, vote: data.vote };

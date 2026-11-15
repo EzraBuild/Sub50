@@ -56,9 +56,12 @@ interface Engine {
   playFirstIssuedAt: number | null;
   userIntentUntil: number;
   lastReportAt: number;
+  /** When the player got stuck buffering while the room plays (for "wait for everyone"). */
+  stallSince: number | null;
 }
 
 const freshEngine = (): Engine => ({
+  stallSince: null,
   loadedTrackId: null,
   pauseSeq: -1,
   holdSeq: -1,
@@ -190,6 +193,12 @@ export function useYouTubeSync(client: SyncClient, room: RoomState | null) {
 
       if (yt === YTState.PLAYING) eng.playingSince ??= now;
       else eng.playingSince = null;
+
+      // Really stuck: the room is live, we're looking at it, and YouTube is buffering.
+      // (A background tab or an autoplay-blocked device shouldn't hold the room.)
+      const stuck = s.isPlaying && !!s.videoId && serverNow >= s.updatedAt && yt === YTState.BUFFERING && document.visibilityState === 'visible';
+      if (stuck) eng.stallSince ??= now;
+      else eng.stallSince = null;
 
       // 0. Nothing to play.
       if (!s.videoId || !s.trackId) {
@@ -578,6 +587,17 @@ export function useYouTubeSync(client: SyncClient, room: RoomState | null) {
   }, [client]);
 
   const getLoadedFraction = useCallback((): number => playerRef.current?.getVideoLoadedFraction?.() ?? 0, []);
+  /** How long we've been stuck buffering while the room plays (ms), 0 if not. */
+  const stalledMs = useCallback((): number => {
+    const since = engRef.current.stallSince;
+    return since === null ? 0 : performance.now() - since;
+  }, []);
+  /** Seconds buffered past the playhead. */
+  const bufferedAhead = useCallback((): number => {
+    const p = playerRef.current;
+    const d = p?.getDuration?.() ?? 0;
+    return d ? (p?.getVideoLoadedFraction?.() ?? 0) * d - (p?.getCurrentTime?.() ?? 0) : 0;
+  }, []);
 
   // Duration can arrive late for some videos; poll cheaply until we have it.
   useEffect(() => {
@@ -601,5 +621,7 @@ export function useYouTubeSync(client: SyncClient, room: RoomState | null) {
     resync,
     getPosition,
     getLoadedFraction,
+    stalledMs,
+    bufferedAhead,
   };
 }

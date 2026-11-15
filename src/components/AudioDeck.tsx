@@ -30,6 +30,10 @@ interface Props {
   onReact: (emoji: Reaction) => void;
   /** Short messages for the user (toasts). */
   notify: (message: string) => void;
+  /** "Waiting for Ada…" while the room waits for someone to buffer. */
+  waitingLabel: string | null;
+  waitForAll: boolean;
+  onToggleWait: () => void;
 }
 
 /**
@@ -37,7 +41,7 @@ interface Props {
  * every device), or, if you opt in, to the real sound your microphone hears.
  * Unmounting (video shown, track gone, leaving) releases the mic.
  */
-function AudioOnlyArt({ videoId, playing, getPosition }: { videoId: string; playing: boolean; getPosition: () => number }) {
+function AudioOnlyArt({ videoId, playing, waiting, getPosition }: { videoId: string; playing: boolean; waiting: boolean; getPosition: () => number }) {
   const mic = useMicLevels();
   const { read } = mic;
   const cache = useRef<{ key: string; groove: Groove } | null>(null);
@@ -80,7 +84,7 @@ function AudioOnlyArt({ videoId, playing, getPosition }: { videoId: string; play
     <div className="h-44 border-b border-line bg-sunken px-4 pt-5 pb-3.5 sm:h-52 sm:px-6">
       <DotMatrix
         source={source}
-        label={listening ? 'mic capture' : playing ? 'audio only' : 'paused'}
+        label={listening ? 'mic capture' : playing ? 'audio only' : waiting ? 'waiting' : 'paused'}
         mode={mode}
         status={listening ? 'rec' : playing ? 'live' : 'idle'}
       />
@@ -101,17 +105,33 @@ export function AudioDeck(props: Props) {
         index="01"
         title="Deck"
         meta={
-          <button
-            type="button"
-            onClick={props.onToggleVideo}
-            disabled={!hasTrack}
-            aria-pressed={showVideo}
-            title={showVideo ? 'Hide video (saves battery and data)' : 'Show video'}
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 uppercase transition-colors hover:bg-sunken hover:text-ink disabled:opacity-40"
-          >
-            {showVideo ? <VideoOffIcon size={13} /> : <VideoIcon size={13} />}
-            {showVideo ? 'hide video' : 'show video'}
-          </button>
+          <span className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={props.onToggleWait}
+              aria-pressed={props.waitForAll}
+              title={
+                props.waitForAll
+                  ? 'Wait for everyone: the room pauses while someone’s connection buffers, then restarts together. Tap to turn off.'
+                  : 'Off: a buffering listener catches up on their own. Tap to wait for everyone.'
+              }
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 uppercase transition-colors hover:bg-sunken hover:text-ink"
+            >
+              <span className={`size-1.5 rounded-full ${props.waitForAll ? 'bg-lock' : 'bg-faint'}`} />
+              wait for all
+            </button>
+            <button
+              type="button"
+              onClick={props.onToggleVideo}
+              disabled={!hasTrack}
+              aria-pressed={showVideo}
+              title={showVideo ? 'Hide video (saves battery and data)' : 'Show video'}
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 uppercase transition-colors hover:bg-sunken hover:text-ink disabled:opacity-40"
+            >
+              {showVideo ? <VideoOffIcon size={13} /> : <VideoIcon size={13} />}
+              {showVideo ? 'hide video' : 'show video'}
+            </button>
+          </span>
         }
       />
 
@@ -125,7 +145,7 @@ export function AudioDeck(props: Props) {
         <div ref={hostRef} className="yt-host absolute inset-0" />
       </div>
 
-      {hasTrack && !showVideo && <AudioOnlyArt videoId={room!.videoId!} playing={playing} getPosition={props.getPosition} />}
+      {hasTrack && !showVideo && <AudioOnlyArt videoId={room!.videoId!} playing={playing} waiting={!!props.waitingLabel} getPosition={props.getPosition} />}
 
       {!hasTrack && (
         <div className="relative overflow-hidden border-b border-line">
@@ -143,7 +163,10 @@ export function AudioDeck(props: Props) {
       <div className="space-y-5 px-4 py-5 sm:px-6 sm:py-6">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <p className="label">{hasTrack ? (playing ? 'Now playing' : 'Paused') : 'Deck idle'}</p>
+            <p className={`label ${props.waitingLabel ? 'flex items-center gap-2 text-warn' : ''}`}>
+              {props.waitingLabel && <span className="size-1.5 animate-pulse rounded-full bg-warn" />}
+              {hasTrack ? (props.waitingLabel ?? (playing ? 'Now playing' : 'Paused')) : 'Deck idle'}
+            </p>
             <h2 className="mt-1.5 truncate text-xl font-semibold tracking-[-0.02em] text-ink sm:text-2xl" title={room?.title ?? undefined}>
               {hasTrack ? room?.title || 'Loading title…' : '—'}
             </h2>

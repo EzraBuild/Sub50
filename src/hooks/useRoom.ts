@@ -105,6 +105,9 @@ export function useRoom(roomId: string, username: string) {
       chat: (text: string) => client.send({ type: 'CHAT_SEND', roomId, text }),
       typing: () => client.send({ type: 'TYPING', roomId }),
       voteSkip: (trackId: string, vote: boolean) => client.send({ type: 'VOTE_SKIP', roomId, trackId, vote }),
+      stall: (stalled: boolean) => client.send({ type: 'STALL', roomId, stalled }),
+      waitCheck: () => client.send({ type: 'WAIT_CHECK', roomId }),
+      setWaitForAll: (on: boolean) => client.send({ type: 'SET_WAIT_FOR_ALL', roomId, on }),
     }),
     [client, roomId],
   );

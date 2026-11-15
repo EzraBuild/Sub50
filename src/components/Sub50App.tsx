@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRoom } from '../hooks/useRoom';
 import { useMediaSession } from '../hooks/useMediaSession';
 import { useChatNotifications } from '../hooks/useChatNotifications';
+import { useWaitForEveryone } from '../hooks/useWaitForEveryone';
 import { useYouTubeSync } from '../hooks/useYouTubeSync';
 import { loadName, saveName, shareUrl } from '../lib/identity';
 import { playlistApi } from '../lib/playlistApi';
@@ -138,6 +139,22 @@ export default function Sub50App({ roomId }: { roomId: string }) {
   const skip = { votes: votes.length, needed: Math.max(1, Math.ceil(peers.length / 2)), mine: votes.includes(selfId) };
   const voteSkip = () => state?.trackId && connected && send(actions.voteSkip(state.trackId, !skip.mine));
 
+  // Wait for everyone: report our own stalls; show who the room is waiting for.
+  useWaitForEveryone({
+    state: entered ? state : null,
+    selfId,
+    probe: { stalledMs: sync.stalledMs, bufferedAhead: sync.bufferedAhead, loadedFraction: sync.getLoadedFraction },
+    stall: actions.stall,
+    check: actions.waitCheck,
+  });
+  const waitingFor = state?.waiting?.peers ?? [];
+  const waitingLabel =
+    waitingFor.length === 0
+      ? null
+      : waitingFor.some((p) => p.id === selfId)
+        ? 'Buffering… the room is waiting for you'
+        : `Waiting for ${waitingFor.length === 1 ? waitingFor[0]!.name : waitingFor.length === 2 ? `${waitingFor[0]!.name} and ${waitingFor[1]!.name}` : `${waitingFor[0]!.name} and ${waitingFor.length - 1} others`}…`;
+
   const [helpOpen, setHelpOpen] = useState(false);
   const chatAlerts = useChatNotifications({ messages, selfId, roomId, serverNow: () => client.clock.serverNow(), onBlocked: notify });
   // Lock screen / notification controls act on the whole room (where the browser routes them to us).
@@ -208,6 +225,9 @@ export default function Sub50App({ roomId }: { roomId: string }) {
               reactions={reactions}
               onReact={(emoji) => send(actions.react(emoji))}
               notify={notify}
+              waitingLabel={waitingLabel}
+              waitForAll={state?.waitForAll ?? true}
+              onToggleWait={() => connected && send(actions.setWaitForAll(!(state?.waitForAll ?? true)))}
             />
             <SyncScope peers={peers} selfId={selfId} self={{ driftMs: sync.telemetry.driftMs, status }} />
           </div>

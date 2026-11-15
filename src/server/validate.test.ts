@@ -18,3 +18,13 @@ test('QUEUE_ADD_MANY: video ids only, 1..50 items, titles bounded', () => {
   assert.equal(bad([{ videoId: 'dQw4w9WgXcQ', title: 'x'.repeat(201) }]), null);
   assert.equal(bad('nope'), null);
 });
+
+
+test('wait-for-everyone messages', () => {
+  const p = (m: object) => parseClientMessage(JSON.stringify({ roomId: 'jam', ...m }));
+  assert.deepEqual(p({ type: 'STALL', stalled: true }), { type: 'STALL', roomId: 'jam', stalled: true });
+  assert.equal(p({ type: 'STALL', stalled: 'yes' }), null);
+  assert.deepEqual(p({ type: 'WAIT_CHECK' }), { type: 'WAIT_CHECK', roomId: 'jam' });
+  assert.deepEqual(p({ type: 'SET_WAIT_FOR_ALL', on: false }), { type: 'SET_WAIT_FOR_ALL', roomId: 'jam', on: false });
+  assert.equal(p({ type: 'SET_WAIT_FOR_ALL' }), null);
+});

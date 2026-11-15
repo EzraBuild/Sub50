@@ -47,11 +47,23 @@ export interface RoomState {
   played?: PlayedItem[];
   /** Listeners voting to skip the current track (reset whenever the track changes). */
   skipVotes?: string[];
+  /** "Wait for everyone": pause while a listener buffers. Absent means on. */
+  waitForAll?: boolean;
+  /** Set while the room has paused itself for these listeners to buffer. */
+  waiting?: WaitState | null;
+  /** Times each listener has held the room on this track (capped, so one bad connection can't keep stopping it). */
+  stallCounts?: Record<string, number>;
   hostId: string;
   /** Version number: +1 on every committed change. Stores compare-and-swap on it. */
   seq: number;
   /** Random id fixed when the room is created; `seq` only orders states within one epoch. */
   epoch: string;
+}
+
+export interface WaitState {
+  /** Server time the room paused. */
+  since: number;
+  peers: { id: string; name: string }[];
 }
 
 export type SyncStatus =
@@ -106,6 +118,11 @@ export type ClientMessage =
   | { type: 'TRACK_ENDED'; roomId: string; trackId: string }
   /** Cast (`vote: true`) or withdraw a vote to skip the current track. */
   | { type: 'VOTE_SKIP'; roomId: string; trackId: string; vote: boolean }
+  /** This listener has been buffering a while (true) or is ready again (false). */
+  | { type: 'STALL'; roomId: string; stalled: boolean }
+  /** While the room waits: drop waiters who left, and resume after the timeout. */
+  | { type: 'WAIT_CHECK'; roomId: string }
+  | { type: 'SET_WAIT_FOR_ALL'; roomId: string; on: boolean }
   | { type: 'REPORT'; roomId: string; driftMs: number | null; rttMs: number | null; status: SyncStatus }
   | { type: 'REACT'; roomId: string; emoji: Reaction }
   | { type: 'CHAT_SEND'; roomId: string; text: string }
@@ -136,6 +153,12 @@ export type ServerMessage =
 // ---------------------------------------------------------------------------
 
 export const SYNC = {
+  /** Buffering this long (ms) while the room plays makes a listener ask the room to wait. */
+  STALL_AFTER_MS: 1500,
+  /** The room resumes after waiting this long (ms), even if someone is still buffering. */
+  WAIT_TIMEOUT_MS: 15_000,
+  /** A listener may hold the room this many times per track. */
+  STALLS_PER_TRACK: 3,
   /** PLAY / SEEK are scheduled this far ahead so all peers start together. */
   START_DELAY_MS: 350,
   /** Track changes are scheduled further ahead so phones (slower to buffer) start on time too. */

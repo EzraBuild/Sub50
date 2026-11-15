@@ -189,3 +189,80 @@ test('QUEUE_ADD_MANY: a playing room only queues, and stops at the queue limit',
   assert.equal(s.queue.length, 200);
   assert.deepEqual(run(s, { type: 'QUEUE_ADD_MANY', items: many.slice(0, 1) }), { kind: 'error', message: 'The queue is full.' });
 });
+
+
+// ---- Wait for everyone ----------------------------------------------------
+
+const wctx = (peerId: string, now: number, livePeerIds?: string[]): EngineContext => ({ now, peerName: peerId.toUpperCase(), newId: () => `id${++ids}`, peerId, livePeerIds });
+const wrun = (s: RoomState, cmd: WithoutRoom<RoomCommand>, peerId: string, now: number, live?: string[]) =>
+  applyCommand(s, { roomId: s.roomId, ...cmd } as RoomCommand, wctx(peerId, now, live));
+/** A room that has been playing for 10s. */
+const live = () => {
+  const s = playing();
+  return { s, at: s.updatedAt + 10_000 };
+};
+
+test('a stall pauses a playing room where it is; the last one ready restarts it on a scheduled start', () => {
+  const { s: start, at } = live();
+  let s = changed(wrun(start, { type: 'STALL', stalled: true }, 'ada', at));
+  assert.deepEqual([s.isPlaying, s.lastTimestamp, s.waiting], [false, 10, { since: at, peers: [{ id: 'ada', name: 'ADA' }] }]);
+  s = changed(wrun(s, { type: 'STALL', stalled: true }, 'bo', at + 500));
+  assert.deepEqual(s.waiting!.peers.map((p) => p.id), ['ada', 'bo']);
+  s = changed(wrun(s, { type: 'STALL', stalled: false }, 'ada', at + 2000));
+  assert.equal(s.isPlaying, false, 'still waiting for Bo');
+  s = changed(wrun(s, { type: 'STALL', stalled: false }, 'bo', at + 3000));
+  assert.deepEqual([s.isPlaying, s.lastTimestamp, s.updatedAt, s.waiting], [true, 10, at + 3000 + SYNC.START_DELAY_MS, null]);
+  assert.deepEqual(wrun(s, { type: 'STALL', stalled: false }, 'bo', at + 4000), { kind: 'unchanged', resend: false }, 'ready twice: nothing');
+});
+
+test('stalls are ignored when the option is off, the room is paused, or the start is still ahead', () => {
+  const { s: start, at } = live();
+  const off = changed(wrun(start, { type: 'SET_WAIT_FOR_ALL', on: false }, 'ada', at));
+  assert.equal(wrun(off, { type: 'STALL', stalled: true }, 'bo', at).kind, 'unchanged');
+  const paused = changed(run(start, { type: 'PAUSE', timestamp: 5 }, at));
+  assert.equal(wrun(paused, { type: 'STALL', stalled: true }, 'bo', at + 100).kind, 'unchanged');
+  assert.equal(wrun(start, { type: 'STALL', stalled: true }, 'bo', start.updatedAt - 100).kind, 'unchanged', 'before the scheduled start');
+});
+
+test('after the timeout the room goes on, and the slow listener cannot stop this track again', () => {
+  const { s: start, at } = live();
+  let s = changed(wrun(start, { type: 'STALL', stalled: true }, 'ada', at));
+  assert.equal(wrun(s, { type: 'WAIT_CHECK' }, 'bo', at + 5000, ['ada', 'bo']).kind, 'unchanged', 'still within the timeout');
+  s = changed(wrun(s, { type: 'WAIT_CHECK' }, 'bo', at + SYNC.WAIT_TIMEOUT_MS, ['ada', 'bo']));
+  assert.deepEqual([s.isPlaying, s.waiting], [true, null]);
+  const later = s.updatedAt + 5000;
+  assert.equal(wrun(s, { type: 'STALL', stalled: true }, 'ada', later).kind, 'unchanged', 'ignored for the rest of the track');
+  const next = changed(run(s, { type: 'CHANGE_VIDEO', url: B }, later));
+  assert.equal(wrun(next, { type: 'STALL', stalled: true }, 'ada', next.updatedAt + 1000).kind, 'changed', 'a new track starts fresh');
+});
+
+test('a waiter who left stops holding the room', () => {
+  const { s: start, at } = live();
+  let s = changed(wrun(start, { type: 'STALL', stalled: true }, 'ada', at));
+  s = changed(wrun(s, { type: 'STALL', stalled: true }, 'bo', at));
+  s = changed(wrun(s, { type: 'WAIT_CHECK' }, 'di', at + 1000, ['bo', 'di']));
+  assert.deepEqual(s.waiting!.peers.map((p) => p.id), ['bo'], 'Ada left');
+  s = changed(wrun(s, { type: 'WAIT_CHECK' }, 'di', at + 2000, ['di']));
+  assert.deepEqual([s.isPlaying, s.waiting], [true, null], 'everyone it waited for is gone: go on');
+});
+
+test('one listener can hold the room only a few times per track', () => {
+  let { s, at } = live();
+  for (let i = 0; i < SYNC.STALLS_PER_TRACK; i++) {
+    s = changed(wrun(s, { type: 'STALL', stalled: true }, 'ada', at));
+    s = changed(wrun(s, { type: 'STALL', stalled: false }, 'ada', at + 100));
+    at = s.updatedAt + 1000;
+  }
+  assert.equal(wrun(s, { type: 'STALL', stalled: true }, 'ada', at).kind, 'unchanged');
+});
+
+test('people override the wait: play, pause, seek, or turning the option off', () => {
+  const { s: start, at } = live();
+  const waiting = changed(wrun(start, { type: 'STALL', stalled: true }, 'ada', at));
+  assert.equal(changed(run(waiting, { type: 'PLAY', timestamp: 10 }, at + 100)).waiting, null);
+  assert.equal(changed(run(waiting, { type: 'PAUSE', timestamp: 10 }, at + 100)).waiting, null);
+  assert.equal(changed(run(waiting, { type: 'SEEK', timestamp: 30 }, at + 100)).waiting, null);
+  const off = changed(wrun(waiting, { type: 'SET_WAIT_FOR_ALL', on: false }, 'bo', at + 100));
+  assert.deepEqual([off.waitForAll, off.isPlaying, off.waiting], [false, true, null]);
+  assert.equal(wrun(off, { type: 'SET_WAIT_FOR_ALL', on: false }, 'bo', at + 200).kind, 'unchanged');
+});

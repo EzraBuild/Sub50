@@ -11,11 +11,27 @@ import { parseYouTubeId } from '../shared/youtube';
 
 export type RoomCommand = Extract<
   ClientMessage,
-  { type: 'CHANGE_VIDEO' | 'PLAY' | 'PAUSE' | 'SEEK' | 'QUEUE_ADD' | 'QUEUE_ADD_MANY' | 'QUEUE_REMOVE' | 'QUEUE_PLAY' | 'TRACK_ENDED' | 'VOTE_SKIP' }
+  {
+    type:
+      | 'CHANGE_VIDEO'
+      | 'PLAY'
+      | 'PAUSE'
+      | 'SEEK'
+      | 'QUEUE_ADD'
+      | 'QUEUE_ADD_MANY'
+      | 'QUEUE_REMOVE'
+      | 'QUEUE_PLAY'
+      | 'TRACK_ENDED'
+      | 'VOTE_SKIP'
+      | 'STALL'
+      | 'WAIT_CHECK'
+      | 'SET_WAIT_FOR_ALL';
+  }
 >;
 
 const ROOM_COMMANDS: ReadonlySet<string> = new Set<RoomCommand['type']>([
   'CHANGE_VIDEO', 'PLAY', 'PAUSE', 'SEEK', 'QUEUE_ADD', 'QUEUE_ADD_MANY', 'QUEUE_REMOVE', 'QUEUE_PLAY', 'TRACK_ENDED', 'VOTE_SKIP',
+  'STALL', 'WAIT_CHECK', 'SET_WAIT_FOR_ALL',
 ]);
 
 export const isRoomCommand = (msg: ClientMessage): msg is RoomCommand => ROOM_COMMANDS.has(msg.type);
@@ -28,7 +44,7 @@ export interface EngineContext {
   newId: () => string;
   /** Presence id of the issuing peer (for votes). */
   peerId?: string;
-  /** Ids of everyone currently in the room; only needed for VOTE_SKIP. */
+  /** Ids of everyone currently in the room; only needed for VOTE_SKIP and WAIT_CHECK. */
   livePeerIds?: readonly string[];
 }
 
@@ -80,6 +96,8 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
       LIMITS.PLAYED_MAX,
     );
     s.skipVotes = [];
+    s.waiting = null;
+    s.stallCounts = {};
     s.videoId = item.videoId;
     s.title = item.title || null;
     s.trackId = ctx.newId();
@@ -100,6 +118,7 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
       // Already playing: re-sending the state is enough. Letting one (possibly
       // drifted) client re-anchor everyone would cause a room-wide jump.
       if (s.isPlaying || !s.videoId) return unchanged(true);
+      s.waiting = null; // a person pressing play overrides the wait
       s.isPlaying = true;
       s.lastTimestamp = cmd.timestamp;
       s.updatedAt = ctx.now + SYNC.START_DELAY_MS;
@@ -108,6 +127,7 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
 
     case 'PAUSE': {
       if (!s.videoId) return unchanged();
+      s.waiting = null;
       s.isPlaying = false;
       s.lastTimestamp = cmd.timestamp;
       s.updatedAt = ctx.now;
@@ -116,6 +136,7 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
 
     case 'SEEK': {
       if (!s.videoId) return unchanged();
+      s.waiting = null;
       s.lastTimestamp = cmd.timestamp;
       s.updatedAt = ctx.now + (s.isPlaying ? SYNC.START_DELAY_MS : 0);
       return commit();
@@ -173,6 +194,56 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
       return advance();
     }
 
+    case 'STALL': {
+      const id = ctx.peerId;
+      if (!id || !s.videoId) return unchanged();
+      if (!cmd.stalled) {
+        // Ready again: the last one ready restarts the room.
+        if (!s.waiting?.peers.some((p) => p.id === id)) return unchanged();
+        s.waiting.peers = s.waiting.peers.filter((p) => p.id !== id);
+        return s.waiting.peers.length ? commit() : resume();
+      }
+      if (s.waitForAll === false) return unchanged();
+      const counts = { ...(s.stallCounts ?? {}) };
+      if ((counts[id] ?? 0) >= SYNC.STALLS_PER_TRACK) return unchanged(); // held it enough this track
+      if (s.waiting) {
+        if (s.waiting.peers.some((p) => p.id === id)) return unchanged();
+        s.waiting.peers.push({ id, name: ctx.peerName });
+      } else {
+        // Only a room that's actually playing pauses (not one a person paused, or before a scheduled start).
+        if (!s.isPlaying || ctx.now < s.updatedAt) return unchanged();
+        s.lastTimestamp = positionAt(s, ctx.now);
+        s.isPlaying = false;
+        s.updatedAt = ctx.now;
+        s.waiting = { since: ctx.now, peers: [{ id, name: ctx.peerName }] };
+      }
+      counts[id] = (counts[id] ?? 0) + 1;
+      s.stallCounts = counts;
+      return commit();
+    }
+
+    case 'WAIT_CHECK': {
+      if (!s.waiting) return unchanged();
+      const live = new Set(ctx.livePeerIds ?? []);
+      let peers = s.waiting.peers.filter((p) => live.has(p.id)); // waiters who left don't hold the room
+      if (ctx.now - s.waiting.since >= SYNC.WAIT_TIMEOUT_MS) {
+        // Waited long enough: go on, and don't let these listeners stop this track again.
+        s.stallCounts = { ...(s.stallCounts ?? {}), ...Object.fromEntries(peers.map((p) => [p.id, SYNC.STALLS_PER_TRACK])) };
+        peers = [];
+      }
+      if (peers.length === 0) return resume();
+      if (peers.length === s.waiting.peers.length) return unchanged();
+      s.waiting.peers = peers;
+      return commit();
+    }
+
+    case 'SET_WAIT_FOR_ALL': {
+      if ((s.waitForAll ?? true) === cmd.on) return unchanged();
+      s.waitForAll = cmd.on;
+      if (!cmd.on && s.waiting) return resume();
+      return commit();
+    }
+
     case 'VOTE_SKIP': {
       // A vote is for one specific track; a late vote for the previous one is ignored.
       if (!ctx.peerId || !s.trackId || cmd.trackId !== s.trackId) return unchanged();
@@ -186,6 +257,14 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
       s.skipVotes = [...votes];
       return commit();
     }
+  }
+
+  /** Restart after a wait: a scheduled start everyone can hit together. */
+  function resume(): Outcome {
+    s.waiting = null;
+    s.isPlaying = true;
+    s.updatedAt = ctx.now + SYNC.START_DELAY_MS;
+    return commit();
   }
 
   /** Next queued track, or park at the current position when the queue is empty. */

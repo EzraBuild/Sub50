@@ -85,7 +85,8 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       return typeof data.on === 'boolean' ? { type: 'SET_WAIT_FOR_ALL', roomId, on: data.on } : null;
     case 'VOTE_SKIP': {
       const trackId = str(data.trackId, 64);
-      return trackId === null || typeof data.vote !== 'boolean' ? null : { type: 'VOTE_SKIP', roomId, trackId, vote: data.vote };
+      const vote = typeof data.vote === 'boolean' || data.vote === 'no' ? data.vote : null;
+      return trackId === null || vote === null ? null : { type: 'VOTE_SKIP', roomId, trackId, vote };
     }
     case 'TRACK_ENDED': {
       const trackId = str(data.trackId, 64);

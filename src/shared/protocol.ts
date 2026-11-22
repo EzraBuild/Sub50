@@ -45,8 +45,12 @@ export interface RoomState {
   queue: QueueItem[];
   /** Last tracks the room played, newest first (absent on rooms created before this existed). */
   played?: PlayedItem[];
-  /** Listeners voting to skip the current track (reset whenever the track changes). */
+  /** Listeners asking to skip the current track (reset whenever the track changes). */
   skipVotes?: string[];
+  /** Listeners who said "keep playing" to the current skip request. */
+  skipNo?: string[];
+  /** The last skip request was turned down by this listener (cleared by a new request or track). */
+  skipDeclined?: { by: string; name: string; at: number } | null;
   /** "Wait for everyone": pause while a listener buffers. Absent means on. */
   waitForAll?: boolean;
   /** Set while the room has paused itself for these listeners to buffer. */
@@ -117,7 +121,8 @@ export type ClientMessage =
   | { type: 'QUEUE_PLAY'; roomId: string; itemId: string }
   | { type: 'TRACK_ENDED'; roomId: string; trackId: string }
   /** Cast (`vote: true`) or withdraw a vote to skip the current track. */
-  | { type: 'VOTE_SKIP'; roomId: string; trackId: string; vote: boolean }
+  /** true: ask (or accept) to skip · false: take your yes back · 'no': keep playing (reject the request). */
+  | { type: 'VOTE_SKIP'; roomId: string; trackId: string; vote: boolean | 'no' }
   /** This listener has been buffering a while (true) or is ready again (false). */
   | { type: 'STALL'; roomId: string; stalled: boolean }
   /** While the room waits: drop waiters who left, and resume after the timeout. */

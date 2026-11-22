@@ -28,3 +28,10 @@ test('wait-for-everyone messages', () => {
   assert.deepEqual(p({ type: 'SET_WAIT_FOR_ALL', on: false }), { type: 'SET_WAIT_FOR_ALL', roomId: 'jam', on: false });
   assert.equal(p({ type: 'SET_WAIT_FOR_ALL' }), null);
 });
+
+test('skip answers: yes, take back, keep playing', () => {
+  const p = (vote: unknown) => parseClientMessage(JSON.stringify({ type: 'VOTE_SKIP', roomId: 'jam', trackId: 't1', vote }));
+  assert.deepEqual(p('no'), { type: 'VOTE_SKIP', roomId: 'jam', trackId: 't1', vote: 'no' });
+  assert.equal(p(true)?.type, 'VOTE_SKIP');
+  assert.equal(p('maybe'), null);
+});

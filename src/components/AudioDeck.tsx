@@ -215,11 +215,13 @@ export function AudioDeck(props: Props) {
               props.skip.needed === 1
                 ? 'Skip this track'
                 : props.skip.mine
-                  ? 'You voted to skip. Click to take it back.'
-                  : `Vote to skip: skips when ${props.skip.needed} of you agree`
+                  ? 'You asked to skip; the others can accept or keep it playing. Click to take it back.'
+                  : props.skip.votes > 0
+                    ? 'Someone asked to skip. Click to agree.'
+                    : `Ask to skip: it skips when ${props.skip.needed} of you agree`
             }
           >
-            {props.skip.needed === 1 ? 'Skip' : `Skip ${props.skip.votes}/${props.skip.needed}`}
+            {props.skip.needed === 1 ? 'Skip' : props.skip.mine ? `Asked ${props.skip.votes}/${props.skip.needed}` : props.skip.votes > 0 ? `Skip ${props.skip.votes}/${props.skip.needed}` : 'Skip'}
             <NextIcon size={14} />
           </button>
         </div>

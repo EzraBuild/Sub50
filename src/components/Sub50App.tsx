@@ -26,6 +26,8 @@ import { Queue } from './Queue';
 import { DropZone } from './DropZone';
 import { ShortcutSheet, useShortcuts } from './Shortcuts';
 import { SyncScope } from './SyncScope';
+import { SkipRequest } from './SkipRequest';
+import { skipThreshold } from '../server/engine';
 import { UrlBar } from './UrlBar';
 
 const ActivitySheet = dynamic(() => import('./activity/ActivitySheet'), { ssr: false });
@@ -141,11 +143,24 @@ export default function Sub50App({ roomId }: { roomId: string }) {
 
   const status = connected ? sync.telemetry.status : 'offline';
 
-  // Vote-to-skip tally, counted against who is here right now.
+  // Skip requests (like a draw offer), counted against who is here right now.
   const liveIds = new Set(peers.map((p) => p.id));
   const votes = (state?.skipVotes ?? []).filter((id) => liveIds.has(id));
-  const skip = { votes: votes.length, needed: Math.max(1, Math.ceil(peers.length / 2)), mine: votes.includes(selfId) };
-  const voteSkip = () => state?.trackId && connected && send(actions.voteSkip(state.trackId, !skip.mine));
+  const skip = { votes: votes.length, needed: skipThreshold(peers.length), mine: votes.includes(selfId) };
+  // Asked already: a second press takes it back, unless people left and it's enough now.
+  const voteSkip = () => state?.trackId && connected && send(actions.voteSkip(state.trackId, !skip.mine || skip.votes >= skip.needed));
+  const answerSkip = (vote: true | 'no') => state?.trackId && connected && send(actions.voteSkip(state.trackId, vote));
+  const askers = votes.map((id) => peers.find((p) => p.id === id)?.name ?? 'Someone');
+  const skipAsked = entered && votes.length > 0 && !skip.mine && !(state?.skipNo ?? []).includes(selfId) && skip.needed > 1;
+  // "Bo wants to keep this song", once, to everyone but Bo.
+  const declined = state?.skipDeclined;
+  const declinedSeen = useRef<string | null>(null);
+  useEffect(() => {
+    const key = declined ? `${declined.by}:${declined.at}` : null;
+    if (key === declinedSeen.current) return;
+    declinedSeen.current = key;
+    if (declined && declined.by !== selfId) notify(`${declined.name} wants to keep this song.`);
+  }, [declined, selfId, notify]);
 
   // Wait for everyone: report our own stalls; show who the room is waiting for.
   useWaitForEveryone({
@@ -313,6 +328,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
           onQueue={(url) => send(actions.queueAdd(url))}
           onReject={notify}
         />
+        {skipAsked && <SkipRequest names={askers} votes={skip.votes} needed={skip.needed} onAccept={() => answerSkip(true)} onKeep={() => answerSkip('no')} />}
         {activityTab !== null && (
           <RoomQueueProvider value={queueSongs}>
             <ActivitySheet tab={activityTab} roomId={roomId} notify={notify} onClose={closeActivity} />

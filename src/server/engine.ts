@@ -48,8 +48,8 @@ export interface EngineContext {
   livePeerIds?: readonly string[];
 }
 
-/** Votes needed to skip: half the live listeners, rounded up, at least one. */
-export const skipThreshold = (liveCount: number): number => Math.max(1, Math.ceil(liveCount / 2));
+/** Yeses needed to skip: more than half the live listeners (alone: 1; two of you: both). */
+export const skipThreshold = (liveCount: number): number => Math.floor(Math.max(1, liveCount) / 2) + 1;
 
 export type Outcome =
   /** Commit `state`. If `resolveTitle` is set, look that video's title up and apply it later. */
@@ -96,6 +96,8 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
       LIMITS.PLAYED_MAX,
     );
     s.skipVotes = [];
+    s.skipNo = [];
+    s.skipDeclined = null;
     s.waiting = null;
     s.stallCounts = {};
     s.videoId = item.videoId;
@@ -245,17 +247,35 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
     }
 
     case 'VOTE_SKIP': {
+      // Like a draw offer: someone asks, the others accept or say "keep playing".
       // A vote is for one specific track; a late vote for the previous one is ignored.
       if (!ctx.peerId || !s.trackId || cmd.trackId !== s.trackId) return unchanged();
       const live = new Set(ctx.livePeerIds ?? [ctx.peerId]);
-      const before = new Set(s.skipVotes ?? []);
-      const votes = new Set([...before].filter((id) => live.has(id))); // people who left don't count
-      if (cmd.vote) votes.add(ctx.peerId);
-      else votes.delete(ctx.peerId);
-      if (votes.size >= skipThreshold(live.size)) return advance();
-      if (votes.size === before.size && [...votes].every((id) => before.has(id))) return unchanged();
-      s.skipVotes = [...votes];
-      return commit();
+      const before = JSON.stringify([s.skipVotes ?? [], s.skipNo ?? [], s.skipDeclined ?? null]);
+      const yes = new Set((s.skipVotes ?? []).filter((id) => live.has(id))); // people who left don't count
+      const no = new Set((s.skipNo ?? []).filter((id) => live.has(id)));
+      if (cmd.vote === true) {
+        if (yes.size === 0) s.skipDeclined = null; // a fresh request
+        yes.add(ctx.peerId);
+        no.delete(ctx.peerId);
+      } else if (cmd.vote === 'no') {
+        if (yes.size === 0) return unchanged(); // nothing to turn down
+        yes.delete(ctx.peerId);
+        no.add(ctx.peerId);
+      } else {
+        yes.delete(ctx.peerId);
+      }
+      const need = skipThreshold(live.size);
+      if (yes.size >= need) return advance();
+      // Nobody asking any more, or too many said no for it to pass: the request is over.
+      if (yes.size === 0 || live.size - no.size < need) {
+        if (cmd.vote === 'no' && yes.size > 0) s.skipDeclined = { by: ctx.peerId, name: ctx.peerName, at: ctx.now };
+        yes.clear();
+        no.clear();
+      }
+      s.skipVotes = [...yes];
+      s.skipNo = [...no];
+      return JSON.stringify([s.skipVotes, s.skipNo, s.skipDeclined ?? null]) === before ? unchanged() : commit();
     }
   }
 
@@ -278,6 +298,8 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
     s.isPlaying = false;
     s.updatedAt = ctx.now;
     s.skipVotes = [];
+    s.skipNo = [];
+    s.skipDeclined = null;
     return commit();
   }
 }

@@ -17,7 +17,7 @@ import { ToastView } from '../Gate';
 import { PlayIcon } from '../icons';
 import { ExportMenu } from './ExportMenu';
 import { PlaylistsTab } from './PlaylistsTab';
-import { PanelTab } from './ActivityOpener';
+import { PanelTab, QueueButton } from './ActivityOpener';
 import { MonthGroup } from './MonthGroup';
 import { PlayAllLink, RoomsTab, personId, type ChatLoader } from './RoomsTab';
 import { StreaksTab } from './StreaksTab';
@@ -82,6 +82,7 @@ function SongRow({ song: s, room }: { song: SongSummary; room: string }) {
         </p>
       </div>
       <FavoriteButton videoId={s.videoId} title={s.title} />
+      <QueueButton videoId={s.videoId} title={s.title} className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-sunken text-muted transition hover:border-line-strong hover:text-ink" />
       <a
         href={listenUrl(room, s.videoId)}
         className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-sunken text-muted transition hover:border-line-strong hover:text-ink"

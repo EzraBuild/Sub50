@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, type AnchorHTMLAttributes } from 'react';
+import { PlusIcon } from '../icons';
 
 /** Opens your activity over the room (on a tab), so the music keeps playing. */
 export type OpenActivity = (tab?: string) => void;
@@ -9,6 +10,23 @@ const Opener = createContext<OpenActivity | null>(null);
 /** Provided by the room; absent elsewhere, where /me links just navigate. */
 export const ActivityOpenerProvider = Opener.Provider;
 export const useActivityOpener = () => useContext(Opener);
+
+/** In a room: adds a song to its queue (plays it if nothing is on). */
+export type QueueSong = (song: { videoId: string; title: string }) => void;
+const Queuer = createContext<QueueSong | null>(null);
+/** Provided around the panel over a room; absent on /me. */
+export const RoomQueueProvider = Queuer.Provider;
+
+/** "+" that adds a song from your history to the room you're in; nothing outside a room. */
+export function QueueButton({ videoId, title, className }: { videoId: string; title: string; className: string }) {
+  const queue = useContext(Queuer);
+  if (!queue) return null;
+  return (
+    <button type="button" onClick={() => queue({ videoId, title })} className={className} aria-label={`Add ${title || videoId} to this room's queue`} title="Add to this room's queue">
+      <PlusIcon size={14} />
+    </button>
+  );
+}
 
 /** Inside the in-room panel: the tab it opened on. Its tabs then leave the room's URL alone. */
 export const PanelTab = createContext<string | null>(null);

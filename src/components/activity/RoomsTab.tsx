@@ -1,15 +1,32 @@
 import { useEffect, useState } from 'react';
+import { newRoomId } from '../../shared/room';
+import { playAllUrl, stashTitles } from '../../lib/playAll';
 import type { ListeningSession, SessionChatMessage } from '../../server/accounts/history';
 import { thumbnailUrl } from '../../shared/youtube';
 import { formatMinutes, formatWhen } from '../../lib/activity';
 import { Avatar } from '../Avatar';
-import { CloseIcon } from '../icons';
+import { CloseIcon, PlayIcon } from '../icons';
 
 export const personId = (name: string) => `name:${name.toLowerCase()}`;
 
 const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
 export type ChatLoader = (sessionId: string) => Promise<SessionChatMessage[]>;
+
+/** Opens `room` with these songs queued in order; titles ride along. */
+export function PlayAllLink({ room, tracks, label = 'Play all' }: { room: string; tracks: { videoId: string; title: string }[]; label?: string }) {
+  return (
+    <a
+      href={playAllUrl(room, tracks)}
+      onClick={() => stashTitles(tracks)}
+      className="inline-flex h-7 items-center gap-1.5 rounded-md border border-line bg-sunken px-2.5 font-mono text-[11px] text-ink-2 transition hover:border-line-strong hover:text-ink"
+      title="Play these in a new room, one after another"
+    >
+      <PlayIcon size={11} />
+      {label}
+    </a>
+  );
+}
 
 /** That session's chat, loaded when opened. */
 function SessionChat({ sessionId, loadChat }: { sessionId: string; loadChat: ChatLoader }) {
@@ -45,7 +62,7 @@ function SessionChat({ sessionId, loadChat }: { sessionId: string; loadChat: Cha
   );
 }
 
-function SessionRow({ session, onRemove, loadChat }: { session: ListeningSession; onRemove: () => void; loadChat: ChatLoader }) {
+function SessionRow({ session, room, onRemove, loadChat }: { session: ListeningSession; room: string; onRemove: () => void; loadChat: ChatLoader }) {
   const [open, setOpen] = useState(false);
   const shown = session.people.slice(0, 6);
   return (
@@ -95,24 +112,28 @@ function SessionRow({ session, onRemove, loadChat }: { session: ListeningSession
           ))}
         </ol>
       )}
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="mt-3 font-mono text-[11px] text-muted underline decoration-line-strong underline-offset-4 hover:text-ink"
-      >
-        {open ? 'hide chat' : 'show chat'}
-      </button>
+      <div className="mt-3 flex items-center gap-3">
+        {session.tracks.length > 0 && <PlayAllLink room={room} tracks={session.tracks} label={session.tracks.length === 1 ? 'Play' : `Play all ${session.tracks.length}`} />}
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="font-mono text-[11px] text-muted underline decoration-line-strong underline-offset-4 hover:text-ink"
+        >
+          {open ? 'hide chat' : 'show chat'}
+        </button>
+      </div>
       {open && <SessionChat sessionId={session.id} loadChat={loadChat} />}
     </li>
   );
 }
 
 export function RoomsTab({ sessions, onRemove, loadChat }: { sessions: ListeningSession[]; onRemove: (id: string) => void; loadChat: ChatLoader }) {
+  const [room] = useState(newRoomId); // "Play all" opens this fresh room
   return (
     <ol className="divide-y divide-line">
       {sessions.map((s) => (
-        <SessionRow key={s.id} session={s} onRemove={() => onRemove(s.id)} loadChat={loadChat} />
+        <SessionRow key={s.id} session={s} room={room} onRemove={() => onRemove(s.id)} loadChat={loadChat} />
       ))}
     </ol>
   );

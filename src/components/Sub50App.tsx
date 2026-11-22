@@ -8,6 +8,7 @@ import { useWaitForEveryone } from '../hooks/useWaitForEveryone';
 import { useYouTubeSync } from '../hooks/useYouTubeSync';
 import { loadName, saveName, shareUrl } from '../lib/identity';
 import { playlistApi } from '../lib/playlistApi';
+import { parsePlayList, playItems, takeTitles, type PlayTrack } from '../lib/playAll';
 import { LIMITS } from '../shared/protocol';
 import { authEnabled } from '../lib/auth-config';
 import { FavoritesProvider } from '../hooks/useFavorites';
@@ -61,34 +62,37 @@ export default function Sub50App({ roomId }: { roomId: string }) {
 
   const link = useMemo(() => shareUrl(roomId, lanAddresses), [roomId, lanAddresses]);
 
-  // Links that start something, once you're in: ?play=<videoId> ("Listen" in your activity) plays it,
-  // or queues it if something's on; ?playlist=<id> ("Play in a room") queues the whole playlist. Then tidy the URL.
+  // Links that start something, once you're in: ?play=<id>[,<id>…] ("Listen" or "Play all" in your activity)
+  // plays the first and queues the rest (all of them if something's on); ?playlist=<id> ("Play in a room")
+  // queues the whole playlist. Then tidy the URL.
   const startLink = useRef(new URLSearchParams(location.search));
   useEffect(() => {
-    const play = startLink.current.get('play');
+    const play = parsePlayList(startLink.current.get('play'));
     const playlist = startLink.current.get('playlist');
-    if ((!play && !playlist) || !entered || !connected || !state) return;
+    if ((!play.length && !playlist) || !entered || !connected || !state) return;
     startLink.current = new URLSearchParams();
     const url = new URL(location.href);
     url.searchParams.delete('play');
     url.searchParams.delete('playlist');
     history.replaceState(null, '', url);
-    if (play && /^[A-Za-z0-9_-]{11}$/.test(play)) {
-      const yt = `https://youtu.be/${play}`;
-      send(state.videoId ? actions.queueAdd(yt) : actions.changeVideo(yt));
+    // In frames of BATCH_MAX (socket frames are small), a beat apart so they land in order.
+    const queueAll = async (items: PlayTrack[]) => {
+      for (let i = 0; i < items.length; i += LIMITS.BATCH_MAX) {
+        if (i) await new Promise((r) => setTimeout(r, 150));
+        send(actions.queueAddMany(items.slice(i, i + LIMITS.BATCH_MAX)));
+      }
+    };
+    if (play.length) {
+      void queueAll(playItems(play, takeTitles()));
+      if (play.length > 1) notify(`Playing ${play.length} songs, one after another.`);
     }
     if (playlist) {
       playlistApi
         .get(playlist)
         .then(async (p) => {
           if (p.tracks.length === 0) return notify(`“${p.name}” has no songs yet.`);
-          const items = p.tracks.map((t) => ({ videoId: t.videoId, ...(t.title ? { title: t.title } : {}) }));
-          // In frames of BATCH_MAX (socket frames are small), a beat apart so they land in order.
-          for (let i = 0; i < items.length; i += LIMITS.BATCH_MAX) {
-            if (i) await new Promise((r) => setTimeout(r, 150));
-            send(actions.queueAddMany(items.slice(i, i + LIMITS.BATCH_MAX)));
-          }
-          notify(`Queued ${Math.min(items.length, LIMITS.QUEUE_MAX)} songs from “${p.name}”.`);
+          await queueAll(p.tracks.map((t) => ({ videoId: t.videoId, ...(t.title ? { title: t.title } : {}) })));
+          notify(`Queued ${Math.min(p.tracks.length, LIMITS.QUEUE_MAX)} songs from “${p.name}”.`);
         })
         .catch(() => notify('Couldn’t load that playlist. It may be private or deleted.'));
     }

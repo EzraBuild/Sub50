@@ -6,7 +6,8 @@ import type { ListeningSession, PersonSummary, SessionChatMessage, VisitStub } f
 import { thumbnailUrl } from '../../shared/youtube';
 import { newRoomId } from '../../shared/room';
 import { authEnabled } from '../../lib/auth-config';
-import { formatMinutes, formatWhen, listenUrl, summarizePeople, summarizeTracks } from '../../lib/activity';
+import { formatMinutes, formatWhen, listenUrl, summarizePeople, summarizeTracks, totals } from '../../lib/activity';
+import { rhythm, streaks } from '../../lib/streaks';
 import { loadLocal, removeLocal } from '../../lib/localHistory';
 import { moveGuestHistory, movedMessage } from '../../lib/migrateHistory';
 import { FavoritesProvider } from '../../hooks/useFavorites';
@@ -17,6 +18,7 @@ import { PlayIcon } from '../icons';
 import { ExportMenu } from './ExportMenu';
 import { PlaylistsTab } from './PlaylistsTab';
 import { PlayAllLink, RoomsTab, personId, type ChatLoader } from './RoomsTab';
+import { StreaksTab } from './StreaksTab';
 import { PLAY_ALL_MAX } from '../../lib/playAll';
 import { TopBar } from './TopBar';
 
@@ -27,7 +29,7 @@ interface HistoryData {
   stubs: VisitStub[];
 }
 
-const TABS = ['rooms', 'songs', 'playlists', 'people'] as const;
+const TABS = ['rooms', 'songs', 'streaks', 'playlists', 'people'] as const;
 type Tab = (typeof TABS)[number];
 const tabFromHash = (): Tab => (TABS as readonly string[]).includes(location.hash.slice(1)) ? (location.hash.slice(1) as Tab) : 'rooms';
 
@@ -126,7 +128,12 @@ function ActivityTabs({ data, onRemove, loadChat, playlists, notice, notify }: T
     setTab(t);
     history.replaceState(null, '', `#${t}`);
   };
-  const counts: Partial<Record<Tab, number>> | null = data ? { rooms: data.sessions.length, songs: summarizeTracks(data.sessions).length, people: data.people.length } : null;
+  // Full visits and the stubs of older ones: when you listened, for the streaks tab.
+  const listening = useMemo(() => (data ? rhythm([...data.sessions, ...data.stubs]) : null), [data]);
+  const streak = useMemo(() => (listening ? streaks(listening.days).current : 0), [listening]);
+  const counts: Partial<Record<Tab, number>> | null = data
+    ? { rooms: data.sessions.length, songs: summarizeTracks(data.sessions).length, people: data.people.length, ...(streak ? { streaks: streak } : {}) }
+    : null;
 
   return (
     <>
@@ -162,6 +169,12 @@ function ActivityTabs({ data, onRemove, loadChat, playlists, notice, notify }: T
         )
       ) : tab === 'songs' ? (
         <SongsTab sessions={data.sessions} />
+      ) : tab === 'streaks' ? (
+        listening && listening.days.size > 0 ? (
+          <StreaksTab rhythm={listening} totalMinutes={totals(data.sessions, data.stubs).minutes} />
+        ) : (
+          <Empty title="no streak yet">Listen in a room for a minute and your first day lights up here. Come back the next day to start a streak.</Empty>
+        )
       ) : (
         <PeopleTab people={data.people} />
       )}
@@ -260,7 +273,7 @@ export default function ActivityPage() {
           <p className="label">activity</p>
           <h1 className="mt-3 text-[30px] leading-[1.1] font-semibold tracking-[-0.03em] text-ink sm:text-[38px]">
             Your listening.
-            <span className="text-faint"> Rooms, songs, playlists, people and chat.</span>
+            <span className="text-faint"> Rooms, songs, streaks, playlists, people and chat.</span>
           </h1>
         </section>
         {authEnabled ? (

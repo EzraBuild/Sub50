@@ -6,7 +6,7 @@ import type { ListeningSession, PersonSummary, SessionChatMessage, VisitStub } f
 import { thumbnailUrl } from '../../shared/youtube';
 import { newRoomId } from '../../shared/room';
 import { authEnabled } from '../../lib/auth-config';
-import { formatMinutes, formatWhen, listenUrl, summarizePeople, summarizeTracks, totals } from '../../lib/activity';
+import { byMonth, formatMinutes, formatWhen, listenUrl, summarizePeople, summarizeTracks, totals, type SongSummary } from '../../lib/activity';
 import { rhythm, streaks } from '../../lib/streaks';
 import { loadLocal, removeLocal } from '../../lib/localHistory';
 import { moveGuestHistory, movedMessage } from '../../lib/migrateHistory';
@@ -18,6 +18,7 @@ import { PlayIcon } from '../icons';
 import { ExportMenu } from './ExportMenu';
 import { PlaylistsTab } from './PlaylistsTab';
 import { PanelTab } from './ActivityOpener';
+import { MonthGroup } from './MonthGroup';
 import { PlayAllLink, RoomsTab, personId, type ChatLoader } from './RoomsTab';
 import { StreaksTab } from './StreaksTab';
 import { PLAY_ALL_MAX } from '../../lib/playAll';
@@ -56,29 +57,40 @@ function SongsTab({ sessions }: { sessions: ListeningSession[] }) {
         <p className="font-mono text-[11px] text-muted">most recent first</p>
         <PlayAllLink room={room} tracks={recent} label={songs.length > recent.length ? `Play latest ${recent.length}` : 'Play all'} />
       </div>
+      {/* By the month you last heard them, the latest open. */}
       <ol className="divide-y divide-line">
-        {songs.map((s) => (
-          <li key={s.videoId} className="flex items-center gap-3 px-4 py-3 sm:px-6">
-            <img src={thumbnailUrl(s.videoId)} alt="" loading="lazy" className="h-10 w-[72px] shrink-0 rounded-md object-cover ring-1 ring-line" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13.5px] font-medium text-ink">{s.title || s.videoId}</p>
-              <p className="truncate font-mono text-[11px] text-muted">
-                {s.plays}× · last {formatWhen(s.lastAt)} · {s.lastRoom}
-              </p>
-            </div>
-            <FavoriteButton videoId={s.videoId} title={s.title} />
-            <a
-              href={listenUrl(room, s.videoId)}
-              className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-sunken text-muted transition hover:border-line-strong hover:text-ink"
-              aria-label={`Listen to ${s.title || s.videoId} in a new room`}
-              title="Listen in a new room"
-            >
-              <PlayIcon size={14} />
-            </a>
-          </li>
+        {byMonth(songs, (s) => s.lastAt).map((m, i) => (
+          <MonthGroup key={m.key} at={m.at} defaultOpen={i === 0} meta={`${m.items.length} ${m.items.length === 1 ? 'song' : 'songs'}`}>
+            {m.items.map((s) => (
+              <SongRow key={s.videoId} song={s} room={room} />
+            ))}
+          </MonthGroup>
         ))}
       </ol>
     </>
+  );
+}
+
+function SongRow({ song: s, room }: { song: SongSummary; room: string }) {
+  return (
+    <li className="flex items-center gap-3 px-4 py-3 sm:px-6">
+      <img src={thumbnailUrl(s.videoId)} alt="" loading="lazy" className="h-10 w-[72px] shrink-0 rounded-md object-cover ring-1 ring-line" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13.5px] font-medium text-ink">{s.title || s.videoId}</p>
+        <p className="truncate font-mono text-[11px] text-muted">
+          {s.plays}× · last {formatWhen(s.lastAt)} · {s.lastRoom}
+        </p>
+      </div>
+      <FavoriteButton videoId={s.videoId} title={s.title} />
+      <a
+        href={listenUrl(room, s.videoId)}
+        className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-sunken text-muted transition hover:border-line-strong hover:text-ink"
+        aria-label={`Listen to ${s.title || s.videoId} in a new room`}
+        title="Listen in a new room"
+      >
+        <PlayIcon size={14} />
+      </a>
+    </li>
   );
 }
 

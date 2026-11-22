@@ -113,6 +113,27 @@ export function totals(sessions: ListeningSession[], stubs: VisitStub[] = []): T
   return { rooms: sessions.length + stubs.length, minutes, songs: ids.size, music };
 }
 
+export interface MonthBucket<T> {
+  /** "2026-11" */
+  key: string;
+  /** The first item's time, for naming the month. */
+  at: number;
+  items: T[];
+}
+
+/** Splits a list (already in time order) into local calendar months, keeping the order. */
+export function byMonth<T>(items: T[], at: (item: T) => number): MonthBucket<T>[] {
+  const out: MonthBucket<T>[] = [];
+  for (const item of items) {
+    const d = new Date(at(item));
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const last = out.at(-1);
+    if (last?.key === key) last.items.push(item);
+    else out.push({ key, at: at(item), items: [item] });
+  }
+  return out;
+}
+
 /** A link that opens a fresh room and plays (or queues) this track. */
 export const listenUrl = (roomId: string, videoId: string) => `/?room=${roomId}&play=${encodeURIComponent(videoId)}`;
 

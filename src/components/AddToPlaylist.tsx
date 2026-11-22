@@ -6,6 +6,7 @@ import type { PlaylistSummary } from '../server/accounts/playlists';
 import { authEnabled } from '../lib/auth-config';
 import { playlistApi } from '../lib/playlistApi';
 import { useAccountName } from './Account';
+import { ActivityLink } from './activity/ActivityOpener';
 import { ListPlusIcon, PlusIcon } from './icons';
 
 interface Props {
@@ -100,9 +101,9 @@ function Picker({ videoId, title, notify, variant = 'row' }: Props) {
               <PlusIcon size={14} />
             </button>
           </form>
-          <a href="/me#playlists" className="block border-t border-line px-3 py-2 font-mono text-[10.5px] text-muted hover:text-ink">
+          <ActivityLink tab="playlists" onClick={() => setOpen(false)} className="block border-t border-line px-3 py-2 font-mono text-[10.5px] text-muted hover:text-ink">
             manage playlists →
-          </a>
+          </ActivityLink>
         </div>
       )}
     </div>

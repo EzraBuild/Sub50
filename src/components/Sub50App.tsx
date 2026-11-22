@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRoom } from '../hooks/useRoom';
 import { useMediaSession } from '../hooks/useMediaSession';
@@ -14,6 +15,7 @@ import { authEnabled } from '../lib/auth-config';
 import { FavoritesProvider } from '../hooks/useFavorites';
 import { HistoryTracker } from '../hooks/useListeningTracker';
 import { AccountNameSync, GuestHistoryMover } from './Account';
+import { ActivityOpenerProvider } from './activity/ActivityOpener';
 import { AudioDeck } from './AudioDeck';
 import { Chat } from './Chat';
 import { Cross } from './Frame';
@@ -25,6 +27,8 @@ import { DropZone } from './DropZone';
 import { ShortcutSheet, useShortcuts } from './Shortcuts';
 import { SyncScope } from './SyncScope';
 import { UrlBar } from './UrlBar';
+
+const ActivitySheet = dynamic(() => import('./activity/ActivitySheet'), { ssr: false });
 
 const VIDEO_PREF_KEY = 'sub50:showVideo';
 
@@ -160,6 +164,10 @@ export default function Sub50App({ roomId }: { roomId: string }) {
         : `Waiting for ${waitingFor.length === 1 ? waitingFor[0]!.name : waitingFor.length === 2 ? `${waitingFor[0]!.name} and ${waitingFor[1]!.name}` : `${waitingFor[0]!.name} and ${waitingFor.length - 1} others`}…`;
 
   const [helpOpen, setHelpOpen] = useState(false);
+  // Your activity, opened over the room (on this tab) so the music keeps going; null = closed.
+  const [activityTab, setActivityTab] = useState<string | null>(null);
+  const openActivity = useCallback((tab?: string) => setActivityTab(tab ?? 'rooms'), []);
+  const closeActivity = useCallback(() => setActivityTab(null), []);
   const chatAlerts = useChatNotifications({ messages, selfId, roomId, serverNow: () => client.clock.serverNow(), onBlocked: notify });
   // Lock screen / notification controls act on the whole room (where the browser routes them to us).
   useMediaSession(state, roomId, peers.length, {
@@ -168,7 +176,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
     next: voteSkip,
   }, chatAlerts.unread);
 
-  useShortcuts(entered, {
+  useShortcuts(entered && activityTab === null, {
     togglePlay,
     resync: sync.resync,
     voteSkip,
@@ -179,121 +187,124 @@ export default function Sub50App({ roomId }: { roomId: string }) {
   });
 
   const page = (
-    <div className="min-h-dvh pb-[env(safe-area-inset-bottom)]">
-      <Header roomId={roomId} status={status} driftMs={sync.telemetry.driftMs} rttMs={rttMs} peerCount={peers.length} shareUrl={link} />
+    <ActivityOpenerProvider value={openActivity}>
+      <div className="min-h-dvh pb-[env(safe-area-inset-bottom)]">
+        <Header roomId={roomId} status={status} driftMs={sync.telemetry.driftMs} rttMs={rttMs} peerCount={peers.length} shareUrl={link} />
 
-      <div className="relative mx-auto max-w-[1200px] border-line min-[1201px]:border-x">
-        {/* Hero band: dotted paper, one line of intent, the link input. */}
-        <section className="relative border-b border-line">
-          <div aria-hidden className="dot-grid fade-edges pointer-events-none absolute inset-0 opacity-80" />
-          <div className="relative px-4 pt-9 pb-8 sm:px-8 sm:pt-14 sm:pb-11">
-            <p className="label rise flex flex-wrap items-center gap-2">
-              <span className="chip">
-                <span className={`size-1.5 rounded-full ${connected ? 'bg-lock' : 'bg-bad'}`} />
-                {connected ? 'live' : 'offline'}
-              </span>
-              room {roomId} · {peers.length} listening
-            </p>
-            <h1
-              className="rise mt-4 max-w-3xl text-[32px] leading-[1.08] font-semibold tracking-[-0.035em] text-ink sm:text-[46px]"
-              style={{ animationDelay: '60ms' }}
-            >
-              Listen in lockstep.
-              <span className="text-faint"> Every device, one beat, under 50ms.</span>
-            </h1>
-            <div className="rise mt-7 max-w-3xl" style={{ animationDelay: '120ms' }}>
-              <UrlBar disabled={!connected} onPlayNow={(url) => send(actions.changeVideo(url))} onQueue={(url) => send(actions.queueAdd(url))} />
+        <div className="relative mx-auto max-w-[1200px] border-line min-[1201px]:border-x">
+          {/* Hero band: dotted paper, one line of intent, the link input. */}
+          <section className="relative border-b border-line">
+            <div aria-hidden className="dot-grid fade-edges pointer-events-none absolute inset-0 opacity-80" />
+            <div className="relative px-4 pt-9 pb-8 sm:px-8 sm:pt-14 sm:pb-11">
+              <p className="label rise flex flex-wrap items-center gap-2">
+                <span className="chip">
+                  <span className={`size-1.5 rounded-full ${connected ? 'bg-lock' : 'bg-bad'}`} />
+                  {connected ? 'live' : 'offline'}
+                </span>
+                room {roomId} · {peers.length} listening
+              </p>
+              <h1
+                className="rise mt-4 max-w-3xl text-[32px] leading-[1.08] font-semibold tracking-[-0.035em] text-ink sm:text-[46px]"
+                style={{ animationDelay: '60ms' }}
+              >
+                Listen in lockstep.
+                <span className="text-faint"> Every device, one beat, under 50ms.</span>
+              </h1>
+              <div className="rise mt-7 max-w-3xl" style={{ animationDelay: '120ms' }}>
+                <UrlBar disabled={!connected} onPlayNow={(url) => send(actions.changeVideo(url))} onQueue={(url) => send(actions.queueAdd(url))} />
+              </div>
             </div>
-          </div>
-          <Cross at="bl" className="hidden min-[1201px]:block" />
-          <Cross at="br" className="hidden min-[1201px]:block" />
-        </section>
+            <Cross at="bl" className="hidden min-[1201px]:block" />
+            <Cross at="br" className="hidden min-[1201px]:block" />
+          </section>
 
-        <main className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <div className="rise min-w-0 border-line lg:border-r" style={{ animationDelay: '160ms' }}>
-            <AudioDeck
-              hostRef={sync.hostRef}
-              room={state}
-              duration={sync.duration}
-              error={sync.error}
-              showVideo={showVideo}
-              connected={connected}
-              getPosition={sync.getPosition}
-              getLoadedFraction={sync.getLoadedFraction}
-              onToggleVideo={toggleVideo}
-              onTogglePlay={togglePlay}
-              onSeek={(t) => send(actions.seek(t))}
-              onResync={sync.resync}
-              skip={skip}
-              onVoteSkip={voteSkip}
-              reactions={reactions}
-              onReact={(emoji) => send(actions.react(emoji))}
-              notify={notify}
-              waitingLabel={waitingLabel}
-              waitForAll={state?.waitForAll ?? true}
-              onToggleWait={() => connected && send(actions.setWaitForAll(!(state?.waitForAll ?? true)))}
-            />
-            <SyncScope peers={peers} selfId={selfId} self={{ driftMs: sync.telemetry.driftMs, status }} />
-          </div>
-          <aside className="rise relative min-w-0 border-t border-line lg:border-t-0" style={{ animationDelay: '220ms' }}>
-            <Cross at="tl" className="hidden lg:block" />
-            <Queue
-              queue={state?.queue ?? []}
-              played={state?.played ?? []}
-              nowPlayingId={state?.videoId ?? null}
-              disabled={!connected}
-              onPlay={(id) => send(actions.queuePlay(id))}
-              onRemove={(id) => send(actions.queueRemove(id))}
-              onRequeue={(item) => send(actions.queueAdd(`https://youtu.be/${item.videoId}`, item.title))}
-              onPlayTrack={(videoId) => send(actions.changeVideo(`https://youtu.be/${videoId}`))}
-              onQueueTrack={(videoId, title) => send(actions.queueAdd(`https://youtu.be/${videoId}`, title))}
-              notify={notify}
-            />
-            <Chat
-              messages={messages}
-              typingNames={typingNames}
-              selfId={selfId}
-              disabled={!connected}
-              onSend={(text) => {
-                const ok = actions.chat(text);
-                send(ok);
-                return ok;
-              }}
-              onTyping={actions.typing}
-              notify={chatAlerts.supported ? { enabled: chatAlerts.enabled, blocked: chatAlerts.blocked, onToggle: () => void chatAlerts.toggle() } : undefined}
-            />
-            <Peers peers={peers} selfId={selfId} hostId={state?.hostId ?? null} />
-          </aside>
-        </main>
+          <main className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="rise min-w-0 border-line lg:border-r" style={{ animationDelay: '160ms' }}>
+              <AudioDeck
+                hostRef={sync.hostRef}
+                room={state}
+                duration={sync.duration}
+                error={sync.error}
+                showVideo={showVideo}
+                connected={connected}
+                getPosition={sync.getPosition}
+                getLoadedFraction={sync.getLoadedFraction}
+                onToggleVideo={toggleVideo}
+                onTogglePlay={togglePlay}
+                onSeek={(t) => send(actions.seek(t))}
+                onResync={sync.resync}
+                skip={skip}
+                onVoteSkip={voteSkip}
+                reactions={reactions}
+                onReact={(emoji) => send(actions.react(emoji))}
+                notify={notify}
+                waitingLabel={waitingLabel}
+                waitForAll={state?.waitForAll ?? true}
+                onToggleWait={() => connected && send(actions.setWaitForAll(!(state?.waitForAll ?? true)))}
+              />
+              <SyncScope peers={peers} selfId={selfId} self={{ driftMs: sync.telemetry.driftMs, status }} />
+            </div>
+            <aside className="rise relative min-w-0 border-t border-line lg:border-t-0" style={{ animationDelay: '220ms' }}>
+              <Cross at="tl" className="hidden lg:block" />
+              <Queue
+                queue={state?.queue ?? []}
+                played={state?.played ?? []}
+                nowPlayingId={state?.videoId ?? null}
+                disabled={!connected}
+                onPlay={(id) => send(actions.queuePlay(id))}
+                onRemove={(id) => send(actions.queueRemove(id))}
+                onRequeue={(item) => send(actions.queueAdd(`https://youtu.be/${item.videoId}`, item.title))}
+                onPlayTrack={(videoId) => send(actions.changeVideo(`https://youtu.be/${videoId}`))}
+                onQueueTrack={(videoId, title) => send(actions.queueAdd(`https://youtu.be/${videoId}`, title))}
+                notify={notify}
+              />
+              <Chat
+                messages={messages}
+                typingNames={typingNames}
+                selfId={selfId}
+                disabled={!connected}
+                onSend={(text) => {
+                  const ok = actions.chat(text);
+                  send(ok);
+                  return ok;
+                }}
+                onTyping={actions.typing}
+                notify={chatAlerts.supported ? { enabled: chatAlerts.enabled, blocked: chatAlerts.blocked, onToggle: () => void chatAlerts.toggle() } : undefined}
+              />
+              <Peers peers={peers} selfId={selfId} hostId={state?.hostId ?? null} />
+            </aside>
+          </main>
 
-        <footer className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line px-4 py-3 font-mono text-[10.5px] tracking-[0.04em] text-faint sm:px-5">
-          <Cross at="tl" className="hidden min-[1201px]:block" />
-          <Cross at="tr" className="hidden min-[1201px]:block" />
-          <span>
-            clock {Math.round(client.clock.offset)}ms · rate {sync.telemetry.rate.toFixed(2)}× · {connection}
-          </span>
-          <button type="button" onClick={() => setHelpOpen((o) => !o)} className="hidden items-center gap-1.5 hover:text-ink sm:inline-flex">
-            <kbd className="rounded border border-line-strong px-1 text-[10px]">?</kbd> keyboard shortcuts
-          </button>
-        </footer>
+          <footer className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line px-4 py-3 font-mono text-[10.5px] tracking-[0.04em] text-faint sm:px-5">
+            <Cross at="tl" className="hidden min-[1201px]:block" />
+            <Cross at="tr" className="hidden min-[1201px]:block" />
+            <span>
+              clock {Math.round(client.clock.offset)}ms · rate {sync.telemetry.rate.toFixed(2)}× · {connection}
+            </span>
+            <button type="button" onClick={() => setHelpOpen((o) => !o)} className="hidden items-center gap-1.5 hover:text-ink sm:inline-flex">
+              <kbd className="rounded border border-line-strong px-1 text-[10px]">?</kbd> keyboard shortcuts
+            </button>
+          </footer>
+        </div>
+
+        {!entered && <Gate roomId={roomId} name={name} connected={connected} onEnter={enter} />}
+        {entered && sync.blocked && <BlockedOverlay onTap={sync.unlock} />}
+        {visibleToast && <ToastView message={visibleToast} />}
+        <ShortcutSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
+        {/* Signing in mid-session renames you in the room. */}
+        {authEnabled && entered && <AccountNameSync onName={setName} />}
+        {authEnabled && <GuestHistoryMover notify={notify} />}
+        {/* Your visit goes to your activity: your account when signed in, otherwise this device. */}
+        {entered && <HistoryTracker roomId={roomId} state={state} peers={peers} selfId={selfId} selfName={name} messages={messages} serverNow={() => client.clock.serverNow()} duration={sync.duration} />}
+        <DropZone
+          enabled={entered && connected}
+          onPlayNow={(url) => send(actions.changeVideo(url))}
+          onQueue={(url) => send(actions.queueAdd(url))}
+          onReject={notify}
+        />
+        {activityTab !== null && <ActivitySheet tab={activityTab} roomId={roomId} notify={notify} onClose={closeActivity} />}
       </div>
-
-      {!entered && <Gate roomId={roomId} name={name} connected={connected} onEnter={enter} />}
-      {entered && sync.blocked && <BlockedOverlay onTap={sync.unlock} />}
-      {visibleToast && <ToastView message={visibleToast} />}
-      <ShortcutSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
-      {/* Signing in mid-session renames you in the room. */}
-      {authEnabled && entered && <AccountNameSync onName={setName} />}
-      {authEnabled && <GuestHistoryMover notify={notify} />}
-      {/* Your visit goes to your activity: your account when signed in, otherwise this device. */}
-      {entered && <HistoryTracker roomId={roomId} state={state} peers={peers} selfId={selfId} selfName={name} messages={messages} serverNow={() => client.clock.serverNow()} duration={sync.duration} />}
-      <DropZone
-        enabled={entered && connected}
-        onPlayNow={(url) => send(actions.changeVideo(url))}
-        onQueue={(url) => send(actions.queueAdd(url))}
-        onReject={notify}
-      />
-    </div>
+    </ActivityOpenerProvider>
   );
 
   // Favorites need an account; without Clerk on this server the provider is skipped entirely.

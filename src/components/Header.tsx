@@ -2,6 +2,7 @@ import type { SyncStatus } from '../shared/protocol';
 import { HistoryIcon, LogoMark, UsersIcon } from './icons';
 import { authEnabled } from '../lib/auth-config';
 import { AccountButton } from './Account';
+import { ActivityLink } from './activity/ActivityOpener';
 import { ShareButton } from './ShareButton';
 import { TelemetryPill } from './TelemetryPill';
 import { ThemeToggle } from './ThemeToggle';
@@ -43,9 +44,9 @@ export function Header({ roomId, status, driftMs, rttMs, peerCount, shareUrl }: 
             <UsersIcon size={15} />
             <span className="tabular-nums">{peerCount}</span>
           </a>
-          <a href="/me" className="cell hidden text-ink-2 transition-colors hover:bg-sunken hover:text-ink sm:flex" title="Your activity" aria-label="Your activity">
+          <ActivityLink className="cell hidden text-ink-2 transition-colors hover:bg-sunken hover:text-ink sm:flex" title="Your activity" aria-label="Your activity">
             <HistoryIcon size={16} />
-          </a>
+          </ActivityLink>
           <div className="cell px-1.5 sm:px-2">
             <ThemeToggle className="inline-flex size-9 items-center justify-center rounded-md text-ink-2 transition-colors hover:bg-sunken hover:text-ink" />
           </div>

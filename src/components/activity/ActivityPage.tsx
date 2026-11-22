@@ -1,7 +1,7 @@
 'use client';
 
 import { SignInButton, useAuth } from '@clerk/nextjs';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ListeningSession, PersonSummary, SessionChatMessage, VisitStub } from '../../server/accounts/history';
 import { thumbnailUrl } from '../../shared/youtube';
 import { newRoomId } from '../../shared/room';
@@ -17,6 +17,7 @@ import { ToastView } from '../Gate';
 import { PlayIcon } from '../icons';
 import { ExportMenu } from './ExportMenu';
 import { PlaylistsTab } from './PlaylistsTab';
+import { PanelTab } from './ActivityOpener';
 import { PlayAllLink, RoomsTab, personId, type ChatLoader } from './RoomsTab';
 import { StreaksTab } from './StreaksTab';
 import { PLAY_ALL_MAX } from '../../lib/playAll';
@@ -120,13 +121,15 @@ interface TabsProps {
 /** Rooms / songs / playlists / people, from whichever history (account or this device). */
 function ActivityTabs({ data, onRemove, loadChat, playlists, notice, notify }: TabsProps) {
   const tabs = TABS.filter((t) => t !== 'playlists' || playlists !== null);
+  // Over a room, the tab comes from whoever opened the panel, and the room's URL is left alone.
+  const panelTab = useContext(PanelTab);
   const [tab, setTab] = useState<Tab>(() => {
-    const t = tabFromHash();
+    const t = (panelTab ?? tabFromHash()) as Tab;
     return tabs.includes(t) ? t : 'rooms';
   });
   const choose = (t: Tab) => {
     setTab(t);
-    history.replaceState(null, '', `#${t}`);
+    if (panelTab === null) history.replaceState(null, '', `#${t}`);
   };
   // Full visits and the stubs of older ones: when you listened, for the streaks tab.
   const listening = useMemo(() => (data ? rhythm([...data.sessions, ...data.stubs]) : null), [data]);
@@ -258,31 +261,35 @@ function Activity({ notify }: { notify: (message: string) => void }) {
 }
 
 /** /me: everything you've done in Sub50. */
+/** The heading and tabs, shared by /me and the panel over a room. Needs a FavoritesProvider when accounts are on. */
+export function ActivityBody({ notify }: { notify: (message: string) => void }) {
+  return (
+    <>
+      <section className="border-b border-line px-4 pt-9 pb-7 sm:px-6 sm:pt-12">
+        <p className="label">activity</p>
+        <h1 className="mt-3 text-[30px] leading-[1.1] font-semibold tracking-[-0.03em] text-ink sm:text-[38px]">
+          Your listening.
+          <span className="text-faint"> Rooms, songs, streaks, playlists, people and chat.</span>
+        </h1>
+      </section>
+      {authEnabled ? <Activity notify={notify} /> : <DeviceActivity canSignIn={false} notify={notify} />}
+    </>
+  );
+}
+
 export default function ActivityPage() {
   const [toast, setToast] = useState<string | null>(null);
   const notify = useCallback((message: string) => {
     setToast(message);
     setTimeout(() => setToast(null), 3500);
   }, []);
+  const body = <ActivityBody notify={notify} />;
 
   return (
     <div className="min-h-dvh pb-[env(safe-area-inset-bottom)]">
       <TopBar />
       <main className="mx-auto max-w-[900px] border-line min-[901px]:border-x">
-        <section className="border-b border-line px-4 pt-9 pb-7 sm:px-6 sm:pt-12">
-          <p className="label">activity</p>
-          <h1 className="mt-3 text-[30px] leading-[1.1] font-semibold tracking-[-0.03em] text-ink sm:text-[38px]">
-            Your listening.
-            <span className="text-faint"> Rooms, songs, streaks, playlists, people and chat.</span>
-          </h1>
-        </section>
-        {authEnabled ? (
-          <FavoritesProvider onError={notify}>
-            <Activity notify={notify} />
-          </FavoritesProvider>
-        ) : (
-          <DeviceActivity canSignIn={false} notify={notify} />
-        )}
+        {authEnabled ? <FavoritesProvider onError={notify}>{body}</FavoritesProvider> : body}
       </main>
       {toast && <ToastView message={toast} />}
     </div>

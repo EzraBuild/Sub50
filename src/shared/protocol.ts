@@ -35,6 +35,8 @@ export interface RoomState {
   videoId: string | null;
   /** Title of the current track (resolved via oEmbed; null until known). */
   title: string | null;
+  /** Who put the current song on (absent on rooms from before this). */
+  addedBy?: string | null;
   /** Unique per track start; lets the server ignore duplicate TRACK_ENDED reports. */
   trackId: string | null;
   isPlaying: boolean;

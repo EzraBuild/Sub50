@@ -15,6 +15,8 @@ const GUARD_MS = 600;
 const PLAY_RETRY_MS = 1500;
 /** ...and assume the browser is blocking autoplay after this long. */
 const BLOCKED_AFTER_MS = 3000;
+/** In a background tab, retry a refused play this often (gently: it may be the OS holding it). */
+const HIDDEN_RETRY_MS = 5000;
 /** Give up on a rate nudge that hasn't converged and seek instead. */
 const MAX_NUDGE_MS = 12_000;
 /** Phones resume slower after a seek; start them with a bigger lead (it is learned either way). */
@@ -303,19 +305,23 @@ export function useYouTubeSync(client: SyncClient, room: RoomState | null) {
       // 4. Room is live: make sure the player is actually playing.
       if (yt !== YTState.PLAYING) {
         if (yt === YTState.BUFFERING || yt === YTState.ENDED) return publish('loading', null);
-        if (document.visibilityState === 'hidden') return publish('loading', null);
+        // In a background tab (or with the screen off) we still start the next song, so the
+        // music carries on. A refusal there is retried quietly and never raises the "tap to
+        // play" overlay; coming back to the tab re-syncs anyway.
+        const hidden = document.visibilityState === 'hidden';
         const expected = expectedTime(s, serverNow);
         const needsSeek = Math.abs(cur - expected) > SYNC.TOLERANCE_S || yt !== YTState.PAUSED;
-        if (eng.playIssuedAt === null || now - eng.playIssuedAt > PLAY_RETRY_MS) {
+        if (eng.playIssuedAt === null || now - eng.playIssuedAt > (hidden ? HIDDEN_RETRY_MS : PLAY_RETRY_MS)) {
           unmutePreroll();
           remote((pl) => {
             if (needsSeek) pl.seekTo(expected + eng.seekLead, true);
             pl.playVideo();
           });
           eng.playIssuedAt = now;
-          eng.playFirstIssuedAt ??= now;
+          if (!hidden) eng.playFirstIssuedAt ??= now;
           markDiscontinuity(needsSeek ? 'seek' : 'start');
         }
+        if (hidden) return publish('loading', null);
         if (eng.playFirstIssuedAt !== null && now - eng.playFirstIssuedAt > BLOCKED_AFTER_MS) {
           setBlocked(true);
           return publish('blocked', null);

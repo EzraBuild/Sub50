@@ -11,7 +11,7 @@ const prefix = `sub50test:${Date.now().toString(36)}`;
 const redis = url && token ? new Redis({ url, token, automaticDeserialization: false, enableTelemetry: false }) : null;
 
 after(async () => {
-  if (redis) await redis.del(`${prefix}:user:u1:history`, `${prefix}:user:u1:chat:sess-chat-0001`);
+  if (redis) await redis.del(`${prefix}:user:u1:history`, `${prefix}:user:u1:chat:sess-chat-0001`, `${prefix}:user:u1:stubs`);
 });
 
 const session = (i: number, minutes = 5): ListeningSession => ({
@@ -37,6 +37,9 @@ test('RedisHistory upserts, lists newest first, prunes and deletes against real 
   list = await store.list('u1');
   assert.equal(list.length, HISTORY_MAX);
   assert.equal(list[0]!.id, session(HISTORY_MAX + 22).id);
+  const stubs = await store.listStubs('u1');
+  assert.equal(stubs.length, 22, 'every pruned visit left a stub');
+  assert.deepEqual(stubs[0], { startedAt: 1000, endedAt: 1500, minutes: 9, songs: 1, seconds: 0 }, 'oldest first');
 
   await store.remove('u1', list[0]!.id);
   assert.equal((await store.list('u1')).length, HISTORY_MAX - 1);

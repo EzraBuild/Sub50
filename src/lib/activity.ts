@@ -1,4 +1,4 @@
-import type { HistoryTrack, ListeningSession } from '../server/accounts/history';
+import type { HistoryTrack, ListeningSession, VisitStub } from '../server/accounts/history';
 
 export interface SongSummary {
   videoId: string;
@@ -84,8 +84,17 @@ export interface Totals {
   music: MusicLength;
 }
 
-/** Everything added up. */
-export function totals(sessions: ListeningSession[]): Totals {
+/** A visit shrunk to what streaks and totals need. */
+export const toStub = (s: ListeningSession, known: Map<string, number>): VisitStub => ({
+  startedAt: s.startedAt,
+  endedAt: s.endedAt,
+  minutes: s.minutes,
+  songs: s.tracks.length,
+  seconds: musicLength(s.tracks, known).seconds,
+});
+
+/** Everything added up, older visits (stubs) included; "songs" counts only visits we still have in full. */
+export function totals(sessions: ListeningSession[], stubs: VisitStub[] = []): Totals {
   const known = knownLengths(sessions);
   const ids = new Set<string>();
   const music: MusicLength = { seconds: 0, unknown: 0 };
@@ -97,7 +106,11 @@ export function totals(sessions: ListeningSession[]): Totals {
     music.seconds += m.seconds;
     music.unknown += m.unknown;
   }
-  return { rooms: sessions.length, minutes, songs: ids.size, music };
+  for (const s of stubs) {
+    minutes += s.minutes;
+    music.seconds += s.seconds;
+  }
+  return { rooms: sessions.length + stubs.length, minutes, songs: ids.size, music };
 }
 
 /** A link that opens a fresh room and plays (or queues) this track. */

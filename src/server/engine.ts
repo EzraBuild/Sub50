@@ -91,7 +91,9 @@ export function applyCommand(state: RoomState, cmd: RoomCommand, ctx: EngineCont
     ...(resolveTitle ? { resolveTitle } : {}),
   });
   const startTrack = (item: Pick<QueueItem, 'videoId' | 'title'> & { addedBy?: string }) => {
-    s.played = [{ videoId: item.videoId, title: item.title, addedBy: item.addedBy ?? ctx.peerName, at: ctx.now }, ...(s.played ?? [])].slice(
+    const addedBy = item.addedBy ?? ctx.peerName;
+    s.addedBy = addedBy;
+    s.played = [{ videoId: item.videoId, title: item.title, addedBy, at: ctx.now }, ...(s.played ?? [])].slice(
       0,
       LIMITS.PLAYED_MAX,
     );

@@ -294,3 +294,13 @@ test('people override the wait: play, pause, seek, or turning the option off', (
   assert.deepEqual([off.waitForAll, off.isPlaying, off.waiting], [false, true, null]);
   assert.equal(wrun(off, { type: 'SET_WAIT_FOR_ALL', on: false }, 'bo', at + 200).kind, 'unchanged');
 });
+
+test('the room remembers who put the current song on', () => {
+  const as = (name: string): EngineContext => ({ ...ctx(), peerName: name });
+  let s = changed(applyCommand(createRoom('jam', 'h', NOW, 'e'), { type: 'CHANGE_VIDEO', roomId: 'jam', url: A }, as('Ada')));
+  assert.equal(s.addedBy, 'Ada', 'Play now');
+  s = changed(applyCommand(s, { type: 'QUEUE_ADD', roomId: 'jam', url: B }, as('Bo')));
+  assert.equal(s.addedBy, 'Ada', 'queueing does not change the current song');
+  s = changed(applyCommand(s, { type: 'TRACK_ENDED', roomId: 'jam', trackId: s.trackId! }, as('Ada')));
+  assert.deepEqual([s.videoId, s.addedBy], ['bbbbbbbbbbb', 'Bo'], 'the queued song keeps who added it');
+});

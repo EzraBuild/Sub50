@@ -34,6 +34,8 @@ interface Props {
   waitingLabel: string | null;
   waitForAll: boolean;
   onToggleWait: () => void;
+  /** Your display name, to say "added by you". */
+  selfName: string;
 }
 
 /**
@@ -95,6 +97,9 @@ function AudioOnlyArt({ videoId, playing, waiting, getPosition }: { videoId: str
 export function AudioDeck(props: Props) {
   const { hostRef, room, duration, error, showVideo, connected } = props;
   const hasTrack = !!room?.videoId;
+  // Who put this song on (older rooms: the matching entry in the played list).
+  const addedBy = room?.addedBy ?? (room?.played?.[0]?.videoId === room?.videoId ? room?.played?.[0]?.addedBy : null) ?? null;
+  const addedByMe = !!addedBy && addedBy.trim().toLowerCase() === props.selfName.trim().toLowerCase();
   const playing = !!room?.isPlaying;
   const canControl = hasTrack && connected;
 
@@ -170,7 +175,17 @@ export function AudioDeck(props: Props) {
             <h2 className="mt-1.5 truncate text-xl font-semibold tracking-[-0.02em] text-ink sm:text-2xl" title={room?.title ?? undefined}>
               {hasTrack ? room?.title || 'Loading title…' : '—'}
             </h2>
-            {hasTrack && <p className="mt-1 font-mono text-[11px] text-faint">youtube · {room?.videoId}</p>}
+            {hasTrack && (
+              <p className="mt-1 truncate font-mono text-[11px] text-faint">
+                youtube · {room?.videoId}
+                {addedBy && (
+                  <>
+                    {' '}
+                    · added by <span className="text-ink-2">{addedByMe ? 'you' : addedBy}</span>
+                  </>
+                )}
+              </p>
+            )}
           </div>
           <div className="mt-5 flex items-center gap-2">
             {room?.videoId && <AddToPlaylist videoId={room.videoId} title={room.title ?? ''} notify={props.notify} variant="deck" />}

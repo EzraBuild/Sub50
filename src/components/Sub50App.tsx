@@ -249,6 +249,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
               <AudioDeck
                 hostRef={sync.hostRef}
                 room={state}
+                selfName={name}
                 duration={sync.duration}
                 error={sync.error}
                 showVideo={showVideo}

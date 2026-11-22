@@ -16,7 +16,8 @@ import { ToastView } from '../Gate';
 import { PlayIcon } from '../icons';
 import { ExportMenu } from './ExportMenu';
 import { PlaylistsTab } from './PlaylistsTab';
-import { RoomsTab, personId, type ChatLoader } from './RoomsTab';
+import { PlayAllLink, RoomsTab, personId, type ChatLoader } from './RoomsTab';
+import { PLAY_ALL_MAX } from '../../lib/playAll';
 import { TopBar } from './TopBar';
 
 interface HistoryData {
@@ -43,29 +44,36 @@ function SongsTab({ sessions }: { sessions: ListeningSession[] }) {
   const songs = useMemo(() => summarizeTracks(sessions), [sessions]);
   const [room] = useState(newRoomId); // "Listen" opens this fresh room
   if (songs.length === 0) return <Empty title="no songs yet">Songs played while you’re in a room show up here.</Empty>;
+  const recent = songs.slice(0, PLAY_ALL_MAX);
   return (
-    <ol className="divide-y divide-line">
-      {songs.map((s) => (
-        <li key={s.videoId} className="flex items-center gap-3 px-4 py-3 sm:px-6">
-          <img src={thumbnailUrl(s.videoId)} alt="" loading="lazy" className="h-10 w-[72px] shrink-0 rounded-md object-cover ring-1 ring-line" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13.5px] font-medium text-ink">{s.title || s.videoId}</p>
-            <p className="truncate font-mono text-[11px] text-muted">
-              {s.plays}× · last {formatWhen(s.lastAt)} · {s.lastRoom}
-            </p>
-          </div>
-          <FavoriteButton videoId={s.videoId} title={s.title} />
-          <a
-            href={listenUrl(room, s.videoId)}
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-sunken text-muted transition hover:border-line-strong hover:text-ink"
-            aria-label={`Listen to ${s.title || s.videoId} in a new room`}
-            title="Listen in a new room"
-          >
-            <PlayIcon size={14} />
-          </a>
-        </li>
-      ))}
-    </ol>
+    <>
+      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-6">
+        <p className="font-mono text-[11px] text-muted">most recent first</p>
+        <PlayAllLink room={room} tracks={recent} label={songs.length > recent.length ? `Play latest ${recent.length}` : 'Play all'} />
+      </div>
+      <ol className="divide-y divide-line">
+        {songs.map((s) => (
+          <li key={s.videoId} className="flex items-center gap-3 px-4 py-3 sm:px-6">
+            <img src={thumbnailUrl(s.videoId)} alt="" loading="lazy" className="h-10 w-[72px] shrink-0 rounded-md object-cover ring-1 ring-line" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13.5px] font-medium text-ink">{s.title || s.videoId}</p>
+              <p className="truncate font-mono text-[11px] text-muted">
+                {s.plays}× · last {formatWhen(s.lastAt)} · {s.lastRoom}
+              </p>
+            </div>
+            <FavoriteButton videoId={s.videoId} title={s.title} />
+            <a
+              href={listenUrl(room, s.videoId)}
+              className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-sunken text-muted transition hover:border-line-strong hover:text-ink"
+              aria-label={`Listen to ${s.title || s.videoId} in a new room`}
+              title="Listen in a new room"
+            >
+              <PlayIcon size={14} />
+            </a>
+          </li>
+        ))}
+      </ol>
+    </>
   );
 }
 

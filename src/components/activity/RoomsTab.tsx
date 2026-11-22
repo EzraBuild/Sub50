@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { newRoomId } from '../../shared/room';
 import { playAllUrl, stashTitles } from '../../lib/playAll';
 import type { ListeningSession, SessionChatMessage } from '../../server/accounts/history';
 import { thumbnailUrl } from '../../shared/youtube';
-import { formatMinutes, formatWhen } from '../../lib/activity';
+import { formatMinutes, formatMusic, formatWhen, knownLengths, musicLength, totals } from '../../lib/activity';
 import { Avatar } from '../Avatar';
 import { CloseIcon, PlayIcon } from '../icons';
 
@@ -62,8 +62,18 @@ function SessionChat({ sessionId, loadChat }: { sessionId: string; loadChat: Cha
   );
 }
 
-function SessionRow({ session, room, onRemove, loadChat }: { session: ListeningSession; room: string; onRemove: () => void; loadChat: ChatLoader }) {
+interface RowProps {
+  session: ListeningSession;
+  room: string;
+  known: Map<string, number>;
+  onRemove: () => void;
+  loadChat: ChatLoader;
+}
+
+function SessionRow({ session, room, known, onRemove, loadChat }: RowProps) {
   const [open, setOpen] = useState(false);
+  const music = formatMusic(musicLength(session.tracks, known));
+  const songs = session.tracks.length;
   const shown = session.people.slice(0, 6);
   return (
     <li className="group px-4 py-4 sm:px-6">
@@ -74,7 +84,14 @@ function SessionRow({ session, room, onRemove, loadChat }: { session: ListeningS
             <a href={`/?room=${session.roomId}`} className="text-ink-2 underline decoration-line-strong underline-offset-4 hover:text-ink">
               {session.roomId}
             </a>{' '}
-            · {formatMinutes(session.minutes)}
+            · {formatMinutes(session.minutes)} listened
+            {songs > 0 && (
+              <>
+                {' '}
+                · {songs} {songs === 1 ? 'song' : 'songs'}
+                {music && <>, {music} of music</>}
+              </>
+            )}
           </p>
           <div className="mt-2 flex items-center gap-2">
             {session.people.length === 0 ? (
@@ -128,13 +145,43 @@ function SessionRow({ session, room, onRemove, loadChat }: { session: ListeningS
   );
 }
 
+function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="px-4 py-4 sm:px-6" title={hint}>
+      <p className="label">{label}</p>
+      <p className="mt-1.5 text-[22px] leading-none font-semibold tracking-[-0.02em] text-ink">{value}</p>
+    </div>
+  );
+}
+
+/** Rooms, time listened, songs and music, added up. */
+function TotalsRow({ sessions }: { sessions: ListeningSession[] }) {
+  const t = totals(sessions);
+  return (
+    <div className="grid grid-cols-2 border-b border-line sm:grid-cols-4 [&>*]:border-line max-sm:[&>*:nth-child(-n+2)]:border-b max-sm:[&>*:nth-child(odd)]:border-r sm:[&>*:not(:last-child)]:border-r">
+      <Stat label="rooms" value={String(t.rooms)} hint="Visits of a minute or more" />
+      <Stat label="listened" value={formatMinutes(t.minutes)} hint="Time the room was playing while you were in it" />
+      <Stat label="songs" value={String(t.songs)} hint="Different songs you’ve heard" />
+      <Stat
+        label="music"
+        value={formatMusic(t.music) ?? '—'}
+        hint={t.music.unknown ? 'Every room’s songs, lengths added up. Songs from before lengths were kept count once you hear them again.' : 'Every room’s songs, lengths added up'}
+      />
+    </div>
+  );
+}
+
 export function RoomsTab({ sessions, onRemove, loadChat }: { sessions: ListeningSession[]; onRemove: (id: string) => void; loadChat: ChatLoader }) {
   const [room] = useState(newRoomId); // "Play all" opens this fresh room
+  const known = useMemo(() => knownLengths(sessions), [sessions]);
   return (
-    <ol className="divide-y divide-line">
-      {sessions.map((s) => (
-        <SessionRow key={s.id} session={s} room={room} onRemove={() => onRemove(s.id)} loadChat={loadChat} />
-      ))}
-    </ol>
+    <>
+      <TotalsRow sessions={sessions} />
+      <ol className="divide-y divide-line">
+        {sessions.map((s) => (
+          <SessionRow key={s.id} session={s} room={room} known={known} onRemove={() => onRemove(s.id)} loadChat={loadChat} />
+        ))}
+      </ol>
+    </>
   );
 }

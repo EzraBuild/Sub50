@@ -9,6 +9,8 @@ export interface HistoryPerson {
 export interface HistoryTrack {
   videoId: string;
   title: string;
+  /** The song's length in seconds, once the player reported it (older visits don't have it). */
+  seconds?: number;
 }
 
 /** One visit to a room: who was there, what played, how long you listened. */
@@ -91,7 +93,12 @@ export function parseSession(body: unknown, now = Date.now()): ListeningSession 
     const v = t as Partial<HistoryTrack>;
     if (typeof v?.videoId !== 'string' || !VIDEO_ID.test(v.videoId) || seenTracks.has(v.videoId)) continue;
     seenTracks.add(v.videoId);
-    tracks.push({ videoId: v.videoId, title: typeof v.title === 'string' ? v.title.trim().slice(0, LIMITS.TITLE_MAX) : '' });
+    const seconds = Math.round(Number(v.seconds));
+    tracks.push({
+      videoId: v.videoId,
+      title: typeof v.title === 'string' ? v.title.trim().slice(0, LIMITS.TITLE_MAX) : '',
+      ...(seconds > 0 && seconds <= 86_400 ? { seconds } : {}),
+    });
     if (tracks.length >= MAX_TRACKS) break;
   }
   return { id: b.id, roomId: b.roomId, startedAt, endedAt, minutes: Math.round(minutes * 10) / 10, people, tracks };

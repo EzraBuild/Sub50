@@ -15,7 +15,7 @@ import { authEnabled } from '../lib/auth-config';
 import { FavoritesProvider } from '../hooks/useFavorites';
 import { HistoryTracker } from '../hooks/useListeningTracker';
 import { AccountNameSync, GuestHistoryMover } from './Account';
-import { ActivityOpenerProvider } from './activity/ActivityOpener';
+import { ActivityOpenerProvider, RoomQueueProvider, type QueueSong } from './activity/ActivityOpener';
 import { AudioDeck } from './AudioDeck';
 import { Chat } from './Chat';
 import { Cross } from './Frame';
@@ -168,6 +168,12 @@ export default function Sub50App({ roomId }: { roomId: string }) {
   const [activityTab, setActivityTab] = useState<string | null>(null);
   const openActivity = useCallback((tab?: string) => setActivityTab(tab ?? 'rooms'), []);
   const closeActivity = useCallback(() => setActivityTab(null), []);
+  // From the panel: a song from your history into this room's queue.
+  const queueSong: QueueSong = ({ videoId, title }) => {
+    const ok = actions.queueAdd(`https://youtu.be/${videoId}`, title || undefined);
+    send(ok);
+    if (ok) notify(state?.videoId ? `Added “${title || videoId}” to the queue.` : `Playing “${title || videoId}”.`);
+  };
   const chatAlerts = useChatNotifications({ messages, selfId, roomId, serverNow: () => client.clock.serverNow(), onBlocked: notify });
   // Lock screen / notification controls act on the whole room (where the browser routes them to us).
   useMediaSession(state, roomId, peers.length, {
@@ -302,7 +308,11 @@ export default function Sub50App({ roomId }: { roomId: string }) {
           onQueue={(url) => send(actions.queueAdd(url))}
           onReject={notify}
         />
-        {activityTab !== null && <ActivitySheet tab={activityTab} roomId={roomId} notify={notify} onClose={closeActivity} />}
+        {activityTab !== null && (
+          <RoomQueueProvider value={queueSong}>
+            <ActivitySheet tab={activityTab} roomId={roomId} notify={notify} onClose={closeActivity} />
+          </RoomQueueProvider>
+        )}
       </div>
     </ActivityOpenerProvider>
   );

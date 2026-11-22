@@ -7,6 +7,7 @@ import { byMonth, formatMinutes, formatMusic, formatWhen, knownLengths, musicLen
 import { Avatar } from '../Avatar';
 import { ChevronIcon, CloseIcon, PlayIcon } from '../icons';
 import { MonthGroup } from './MonthGroup';
+import { QueueButton } from './ActivityOpener';
 
 export const personId = (name: string) => `name:${name.toLowerCase()}`;
 
@@ -120,6 +121,7 @@ function SessionRow({ session, room, known, onRemove, loadChat }: RowProps) {
                 <li key={t.videoId} className="flex max-w-full items-center gap-2 rounded-md border border-line bg-canvas py-1 pr-2.5 pl-1">
                   <img src={thumbnailUrl(t.videoId)} alt="" loading="lazy" className="h-6 w-10 shrink-0 rounded object-cover" />
                   <span className="min-w-0 truncate text-[12px] text-ink-2">{t.title || t.videoId}</span>
+                  <QueueButton videoId={t.videoId} title={t.title} className="-my-1 -mr-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded text-faint transition hover:bg-sunken hover:text-ink" />
                 </li>
               ))}
             </ol>

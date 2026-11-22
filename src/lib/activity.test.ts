@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ListeningSession } from '../server/accounts/history';
-import { formatMinutes, formatMusic, formatWhen, knownLengths, musicLength, summarizeTracks, totals } from './activity';
+import { byMonth, formatMinutes, formatMusic, formatWhen, knownLengths, musicLength, summarizeTracks, totals } from './activity';
 
 const V1 = 'dQw4w9WgXcQ';
 const V2 = 'N9U9A4_cgyI';
@@ -49,4 +49,14 @@ test('music per room: lengths added up, older songs borrow a length from a later
   assert.equal(formatMusic(musicLength(recent.tracks, known)), '4 min');
   assert.equal(formatMusic({ seconds: 0, unknown: 2 }), null, 'none known');
   assert.deepEqual(totals([old, recent]), { rooms: 2, minutes: 5, songs: 2, music: { seconds: 480, unknown: 1 } }, 'a song in two rooms counts in both');
+});
+
+test('long lists split by local month, order kept', () => {
+  const at = (m: number, d: number) => new Date(2026, m - 1, d, 12).getTime();
+  const items = [at(11, 20), at(11, 2), at(10, 31), at(10, 1), at(8, 15)];
+  assert.deepEqual(
+    byMonth(items, (t) => t).map((b) => [b.key, b.items.length, b.at]),
+    [['2026-11', 2, at(11, 20)], ['2026-10', 2, at(10, 31)], ['2026-08', 1, at(8, 15)]],
+  );
+  assert.deepEqual(byMonth([], (t: number) => t), []);
 });

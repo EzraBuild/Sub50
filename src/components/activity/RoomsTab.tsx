@@ -3,9 +3,10 @@ import { newRoomId } from '../../shared/room';
 import { playAllUrl, stashTitles } from '../../lib/playAll';
 import type { ListeningSession, SessionChatMessage, VisitStub } from '../../server/accounts/history';
 import { thumbnailUrl } from '../../shared/youtube';
-import { formatMinutes, formatMusic, formatWhen, knownLengths, musicLength, totals } from '../../lib/activity';
+import { byMonth, formatMinutes, formatMusic, formatWhen, knownLengths, musicLength, totals } from '../../lib/activity';
 import { Avatar } from '../Avatar';
-import { CloseIcon, PlayIcon } from '../icons';
+import { ChevronIcon, CloseIcon, PlayIcon } from '../icons';
+import { MonthGroup } from './MonthGroup';
 
 export const personId = (name: string) => `name:${name.toLowerCase()}`;
 
@@ -72,43 +73,30 @@ interface RowProps {
 
 function SessionRow({ session, room, known, onRemove, loadChat }: RowProps) {
   const [open, setOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const music = formatMusic(musicLength(session.tracks, known));
   const songs = session.tracks.length;
   const shown = session.people.slice(0, 6);
   return (
-    <li className="group px-4 py-4 sm:px-6">
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="font-mono text-[11px] tracking-[0.04em] text-faint">
-            {formatWhen(session.startedAt)} · room{' '}
-            <a href={`/?room=${session.roomId}`} className="text-ink-2 underline decoration-line-strong underline-offset-4 hover:text-ink">
-              {session.roomId}
-            </a>{' '}
-            · {formatMinutes(session.minutes)} listened
-            {songs > 0 && (
-              <>
-                {' '}
-                · {songs} {songs === 1 ? 'song' : 'songs'}
-                {music && <>, {music} of music</>}
-              </>
-            )}
-          </p>
-          <div className="mt-2 flex items-center gap-2">
-            {session.people.length === 0 ? (
-              <span className="text-[13px] text-muted">Just you</span>
-            ) : (
-              <>
-                <span className="flex -space-x-1.5">
-                  {shown.map((p) => (
-                    <Avatar key={p.name} id={personId(p.name)} name={p.name} size={22} className="ring-2 ring-panel" />
-                  ))}
-                </span>
-                <span className="min-w-0 truncate text-[13px] text-ink-2">{shown.map((p) => p.name).join(', ')}</span>
-                {session.people.length > shown.length && <span className="shrink-0 font-mono text-[11px] text-muted">+{session.people.length - shown.length}</span>}
-              </>
-            )}
-          </div>
-        </div>
+    <li className="group">
+      <div className="flex items-center gap-2 px-4 py-3 sm:px-6">
+        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+          <ChevronIcon size={13} className={`shrink-0 text-faint transition-transform ${open ? 'rotate-90' : ''}`} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13.5px] font-medium text-ink">{session.roomId}</span>
+            <span className="block truncate font-mono text-[11px] text-muted">
+              {formatWhen(session.startedAt)} · {formatMinutes(session.minutes)}
+              {songs > 0 && ` · ${songs} ${songs === 1 ? 'song' : 'songs'}`}
+            </span>
+          </span>
+          {session.people.length > 0 && (
+            <span className="flex shrink-0 -space-x-1.5" aria-label={`with ${session.people.map((p) => p.name).join(', ')}`}>
+              {session.people.slice(0, 3).map((p) => (
+                <Avatar key={p.name} id={personId(p.name)} name={p.name} size={20} className="ring-2 ring-panel" />
+              ))}
+            </span>
+          )}
+        </button>
         <button
           type="button"
           onClick={onRemove}
@@ -119,28 +107,40 @@ function SessionRow({ session, room, known, onRemove, loadChat }: RowProps) {
           <CloseIcon size={14} />
         </button>
       </div>
-      {session.tracks.length > 0 && (
-        <ol className="mt-3 flex flex-wrap gap-2">
-          {session.tracks.map((t) => (
-            <li key={t.videoId} className="flex max-w-full items-center gap-2 rounded-md border border-line bg-canvas py-1 pr-2.5 pl-1">
-              <img src={thumbnailUrl(t.videoId)} alt="" loading="lazy" className="h-6 w-10 shrink-0 rounded object-cover" />
-              <span className="min-w-0 truncate text-[12px] text-ink-2">{t.title || t.videoId}</span>
-            </li>
-          ))}
-        </ol>
+      {open && (
+        <div className="px-4 pb-4 pl-[39px] sm:px-6 sm:pl-[47px]">
+          <p className="text-[13px] text-ink-2">
+            {session.people.length === 0 ? <span className="text-muted">Just you</span> : <>With {shown.map((p) => p.name).join(', ')}</>}
+            {session.people.length > shown.length && <span className="font-mono text-[11px] text-muted"> +{session.people.length - shown.length}</span>}
+            {music && <span className="text-muted"> · {music} of music</span>}
+          </p>
+          {session.tracks.length > 0 && (
+            <ol className="mt-3 flex flex-wrap gap-2">
+              {session.tracks.map((t) => (
+                <li key={t.videoId} className="flex max-w-full items-center gap-2 rounded-md border border-line bg-canvas py-1 pr-2.5 pl-1">
+                  <img src={thumbnailUrl(t.videoId)} alt="" loading="lazy" className="h-6 w-10 shrink-0 rounded object-cover" />
+                  <span className="min-w-0 truncate text-[12px] text-ink-2">{t.title || t.videoId}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {session.tracks.length > 0 && <PlayAllLink room={room} tracks={session.tracks} label={session.tracks.length === 1 ? 'Play' : `Play all ${session.tracks.length}`} />}
+            <a href={`/?room=${session.roomId}`} className="font-mono text-[11px] text-muted underline decoration-line-strong underline-offset-4 hover:text-ink">
+              open room
+            </a>
+            <button
+              type="button"
+              onClick={() => setChatOpen((o) => !o)}
+              aria-expanded={chatOpen}
+              className="font-mono text-[11px] text-muted underline decoration-line-strong underline-offset-4 hover:text-ink"
+            >
+              {chatOpen ? 'hide chat' : 'show chat'}
+            </button>
+          </div>
+          {chatOpen && <SessionChat sessionId={session.id} loadChat={loadChat} />}
+        </div>
       )}
-      <div className="mt-3 flex items-center gap-3">
-        {session.tracks.length > 0 && <PlayAllLink room={room} tracks={session.tracks} label={session.tracks.length === 1 ? 'Play' : `Play all ${session.tracks.length}`} />}
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          className="font-mono text-[11px] text-muted underline decoration-line-strong underline-offset-4 hover:text-ink"
-        >
-          {open ? 'hide chat' : 'show chat'}
-        </button>
-      </div>
-      {open && <SessionChat sessionId={session.id} loadChat={loadChat} />}
     </li>
   );
 }
@@ -189,9 +189,19 @@ export function RoomsTab({ sessions, stubs, onRemove, loadChat }: RoomsTabProps)
   return (
     <>
       <TotalsRow sessions={sessions} stubs={stubs} />
+      {/* By month, the latest open; each room one line until you open it. */}
       <ol className="divide-y divide-line">
-        {sessions.map((s) => (
-          <SessionRow key={s.id} session={s} room={room} known={known} onRemove={() => onRemove(s.id)} loadChat={loadChat} />
+        {byMonth(sessions, (s) => s.startedAt).map((m, i) => (
+          <MonthGroup
+            key={m.key}
+            at={m.at}
+            defaultOpen={i === 0}
+            meta={`${m.items.length} ${m.items.length === 1 ? 'room' : 'rooms'} · ${formatMinutes(m.items.reduce((n, s) => n + s.minutes, 0))}`}
+          >
+            {m.items.map((s) => (
+              <SessionRow key={s.id} session={s} room={room} known={known} onRemove={() => onRemove(s.id)} loadChat={loadChat} />
+            ))}
+          </MonthGroup>
         ))}
       </ol>
     </>

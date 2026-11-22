@@ -115,6 +115,13 @@ export const CloseIcon = (p: IconProps) => (
   </Svg>
 );
 
+/** Points right; rotate 90° for "open". */
+export const ChevronIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M9 5.5l6.5 6.5L9 18.5" />
+  </Svg>
+);
+
 export const CrownIcon = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 17.5 3 7.5l5 4 4-6 4 6 5-4-1 10H4Z" />

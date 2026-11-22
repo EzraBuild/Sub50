@@ -145,7 +145,11 @@ function SessionRow({ session, room, known, onRemove, loadChat }: RowProps) {
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
+/** A row of stats: 2×2 on phones, one row from sm up, hairlines between. */
+export const STAT_GRID =
+  'grid grid-cols-2 border-b border-line sm:grid-cols-4 [&>*]:border-line max-sm:[&>*:nth-child(-n+2)]:border-b max-sm:[&>*:nth-child(odd)]:border-r sm:[&>*:not(:last-child)]:border-r';
+
+export function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
     <div className="px-4 py-4 sm:px-6" title={hint}>
       <p className="label">{label}</p>
@@ -158,7 +162,7 @@ function Stat({ label, value, hint }: { label: string; value: string; hint: stri
 function TotalsRow({ sessions, stubs }: { sessions: ListeningSession[]; stubs: VisitStub[] }) {
   const t = totals(sessions, stubs);
   return (
-    <div className="grid grid-cols-2 border-b border-line sm:grid-cols-4 [&>*]:border-line max-sm:[&>*:nth-child(-n+2)]:border-b max-sm:[&>*:nth-child(odd)]:border-r sm:[&>*:not(:last-child)]:border-r">
+    <div className={STAT_GRID}>
       <Stat label="rooms" value={String(t.rooms)} hint="Visits of a minute or more" />
       <Stat label="listened" value={formatMinutes(t.minutes)} hint="Time the room was playing while you were in it" />
       <Stat label="songs" value={String(t.songs)} hint={stubs.length ? 'Different songs in the rooms listed below' : 'Different songs you’ve heard'} />

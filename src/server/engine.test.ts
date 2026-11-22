@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SYNC, type RoomState } from '../shared/protocol';
-import { applyCommand, applyTitle, createRoom, withHost, type EngineContext, type Outcome, type RoomCommand } from './engine';
+import { applyCommand, applyTitle, createRoom, skipThreshold, withHost, type EngineContext, type Outcome, type RoomCommand } from './engine';
 
 const A = 'https://youtu.be/aaaaaaaaaaa';
 const B = 'https://www.youtube.com/watch?v=bbbbbbbbbbb';
@@ -133,17 +133,45 @@ test('rooms created before the played log existed keep working', () => {
   assert.equal(s.played!.length, 1);
 });
 
-const vote = (s: RoomState, peerId: string, live: string[], v = true, now = NOW) =>
+const vote = (s: RoomState, peerId: string, live: string[], v: boolean | 'no' = true, now = NOW) =>
   applyCommand(s, { type: 'VOTE_SKIP', roomId: s.roomId, trackId: s.trackId!, vote: v }, { ...ctx(now), peerId, livePeerIds: live });
 
-test('vote to skip: skips once half the live room agrees, votes reset on the next track', () => {
+test('vote to skip: skips once more than half the live room agrees, votes reset on the next track', () => {
   let s = changed(run(changed(run(playing(), { type: 'QUEUE_ADD', url: B })), { type: 'QUEUE_ADD', url: A }));
   const room = ['p1', 'p2', 'p3', 'p4'];
   s = changed(vote(s, 'p1', room));
   assert.deepEqual([s.videoId, s.skipVotes], ['aaaaaaaaaaa', ['p1']], '1 of 4: not yet');
   s = changed(vote(s, 'p2', room));
-  assert.equal(s.videoId, 'bbbbbbbbbbb', '2 of 4 = half: skipped to the next queued track');
+  assert.equal(s.videoId, 'aaaaaaaaaaa', '2 of 4 is only half');
+  s = changed(vote(s, 'p3', room));
+  assert.equal(s.videoId, 'bbbbbbbbbbb', '3 of 4: skipped to the next queued track');
   assert.deepEqual(s.skipVotes, [], 'votes reset for the new track');
+});
+
+test('skip request between two: asking waits for the other, who accepts or keeps it playing', () => {
+  const two = ['ada', 'bo'];
+  const queued = changed(run(playing(), { type: 'QUEUE_ADD', url: B }));
+  const asked = changed(vote(queued, 'ada', two));
+  assert.deepEqual([asked.videoId, asked.skipVotes], ['aaaaaaaaaaa', ['ada']], 'one ask is not a skip with two of you');
+  assert.equal(changed(vote(asked, 'bo', two)).videoId, 'bbbbbbbbbbb', 'accepted: skipped');
+
+  const kept = changed(vote(asked, 'bo', two, 'no'));
+  assert.deepEqual([kept.videoId, kept.skipVotes, kept.skipNo, kept.skipDeclined], ['aaaaaaaaaaa', [], [], { by: 'bo', name: 'Ada', at: NOW }], 'rejected: the request ends, Ada sees who kept it');
+  assert.equal(vote(kept, 'bo', two, 'no').kind, 'unchanged', 'nothing left to turn down');
+  const again = changed(vote(kept, 'ada', two));
+  assert.deepEqual([again.skipVotes, again.skipDeclined], [['ada'], null], 'asking again starts fresh');
+  assert.deepEqual(changed(vote(again, 'ada', two, false)).skipVotes, [], 'Ada takes it back');
+});
+
+test('skip request in a bigger room: one no is not the end, enough noes are', () => {
+  const three = ['ada', 'bo', 'di'];
+  let s = changed(vote(changed(run(playing(), { type: 'QUEUE_ADD', url: B })), 'ada', three));
+  s = changed(vote(s, 'bo', three, 'no'));
+  assert.deepEqual([s.skipVotes, s.skipNo], [['ada'], ['bo']], '2 of 3 can still say yes');
+  assert.equal(changed(vote(s, 'di', three)).videoId, 'bbbbbbbbbbb', 'Di agrees: 2 of 3');
+  const kept = changed(vote(s, 'di', three, 'no'));
+  assert.deepEqual([kept.videoId, kept.skipVotes, kept.skipDeclined?.by], ['aaaaaaaaaaa', [], 'di'], 'two noes: it can no longer pass');
+  assert.deepEqual([1, 2, 3, 4, 5].map(skipThreshold), [1, 2, 2, 3, 3]);
 });
 
 test('vote to skip: withdraw, duplicates, stale voters, wrong track, solo listener', () => {

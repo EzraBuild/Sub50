@@ -16,6 +16,8 @@ export interface TickInput {
   title: string | null;
   /** Names of everyone else in the room right now. */
   others: string[];
+  /** The current song's length (s) per the player; 0 while unknown. */
+  duration?: number;
 }
 
 /**
@@ -26,7 +28,7 @@ export class ListeningTracker {
   private playedMs = 0;
   private lastAt: number;
   private readonly people = new Map<string, string>();
-  private readonly tracks = new Map<string, string>();
+  private readonly tracks = new Map<string, { title: string; seconds?: number }>();
   /** What the server last accepted, to skip redundant writes. */
   private sentKey = '';
   private readonly chat = new Map<string, SessionChatMessage>();
@@ -46,7 +48,10 @@ export class ListeningTracker {
     this.lastAt = now;
     if (!input.playing || !input.videoId) return;
     this.playedMs += dt;
-    this.tracks.set(input.videoId, input.title || this.tracks.get(input.videoId) || '');
+    // The latest length wins: right after a track change the player can still report the old one.
+    const prev = this.tracks.get(input.videoId);
+    const seconds = input.duration && input.duration > 0 ? Math.round(input.duration) : prev?.seconds;
+    this.tracks.set(input.videoId, { title: input.title || prev?.title || '', ...(seconds ? { seconds } : {}) });
     const self = this.selfName().trim().toLowerCase();
     for (const raw of input.others) {
       const name = raw.trim();
@@ -75,7 +80,7 @@ export class ListeningTracker {
       endedAt: this.lastAt,
       minutes: this.minutes,
       people: [...this.people.values()].map((name) => ({ name })),
-      tracks: [...this.tracks].map(([videoId, title]) => ({ videoId, title })),
+      tracks: [...this.tracks].map(([videoId, t]) => ({ videoId, ...t })),
     };
   }
 
@@ -99,4 +104,4 @@ export class ListeningTracker {
   }
 }
 
-const sessionKey = (s: ListeningSession) => `${s.minutes}|${s.people.length}|${s.tracks.map((t) => t.videoId + t.title).join(',')}`;
+const sessionKey = (s: ListeningSession) => `${s.minutes}|${s.people.length}|${s.tracks.map((t) => `${t.videoId}${t.title}${t.seconds ?? ''}`).join(',')}`;

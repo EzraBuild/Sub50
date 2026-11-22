@@ -75,3 +75,25 @@ test('after signing in mid-visit, everything is sent again (it went to the devic
   const again = t.pending()!;
   assert.deepEqual([again.minutes, again.chat.map((m) => m.id)], [1.2, ['a']]);
 });
+
+test('song lengths: kept per track, the latest reported length wins, unknown stays out', () => {
+  const t = new ListeningTracker('sess-0001-abcd', 'jam', () => 'Me', 0);
+  t.tick(30_000, { playing: true, videoId: V1, title: 'x', others: [], duration: 200 }); // stale: the previous song's length
+  t.tick(60_000, { playing: true, videoId: V1, title: 'x', others: [], duration: 0 }); // loading: keeps what it had
+  t.tick(90_000, { playing: true, videoId: V1, title: 'x', others: [], duration: 212.6 });
+  t.tick(120_000, { playing: true, videoId: V2, title: 'y', others: [] });
+  assert.deepEqual(t.snapshot().tracks, [{ videoId: V1, title: 'x', seconds: 213 }, { videoId: V2, title: 'y' }]);
+  const sent = t.pending()!;
+  t.markSent(sent);
+  t.tick(150_000, { playing: true, videoId: V2, title: 'y', others: [], duration: 95 });
+  assert.equal(t.pending()?.tracks[1]?.seconds, 95, 'a newly known length is worth a send');
+});
+
+test('parseSession keeps sane song lengths only', () => {
+  const s = parseSession({ id: 'sess-0001-abcd', roomId: 'jam', startedAt: 0, endedAt: 120_000, minutes: 2, people: [], tracks: [
+    { videoId: V1, title: 'a', seconds: 212.4 },
+    { videoId: V2, title: 'b', seconds: -3 },
+    { videoId: 'kJQP7kiw5Fk', title: 'c', seconds: 'long' },
+  ] }, 120_000)!;
+  assert.deepEqual(s.tracks.map((t) => t.seconds), [212, undefined, undefined]);
+});

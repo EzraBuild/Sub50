@@ -23,6 +23,8 @@ interface TrackerProps {
   messages: ChatMessage[];
   /** Server time: chat from before you entered isn't part of your visit. */
   serverNow: () => number;
+  /** The current song's length (s) per the player, 0 while unknown. */
+  duration: number;
 }
 
 /**
@@ -39,9 +41,9 @@ function WithAccount(props: TrackerProps) {
   return <Tracker {...props} signedIn={!!isSignedIn} />;
 }
 
-function Tracker({ roomId, state, peers, selfId, selfName, messages, serverNow, signedIn }: TrackerProps & { signedIn: boolean }) {
-  const live = useRef({ state, peers, selfId, selfName, signedIn, messages, serverNow });
-  live.current = { state, peers, selfId, selfName, signedIn, messages, serverNow };
+function Tracker({ roomId, state, peers, selfId, selfName, messages, serverNow, duration, signedIn }: TrackerProps & { signedIn: boolean }) {
+  const live = useRef({ state, peers, selfId, selfName, signedIn, messages, serverNow, duration });
+  live.current = { state, peers, selfId, selfName, signedIn, messages, serverNow, duration };
 
   useEffect(() => {
     // One id per visit: the tab's session id plus when you entered.
@@ -58,6 +60,7 @@ function Tracker({ roomId, state, peers, selfId, selfName, messages, serverNow, 
         videoId: s?.videoId ?? null,
         title: s?.title ?? null,
         others: p.filter((peer) => peer.id !== me).map((peer) => peer.name),
+        duration: live.current.duration,
       });
     };
 

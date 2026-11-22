@@ -6,6 +6,7 @@ import { activeVisits } from '../hooks/useListeningTracker';
 import { moveGuestHistory, movedMessage } from '../lib/migrateHistory';
 import { authEnabled } from '../lib/auth-config';
 import { HistoryIcon } from './icons';
+import { useActivityOpener } from './activity/ActivityOpener';
 
 /** The account's display name, or null while loading / signed out. */
 function accountName(user: ReturnType<typeof useUser>['user']): string | null {
@@ -42,10 +43,16 @@ export function AccountButton() {
 
 /** Clerk's account menu, plus a way to your activity page. */
 function AccountMenu() {
+  // In a room, open it over the room so the music keeps playing.
+  const open = useActivityOpener();
   return (
     <UserButton>
       <UserButton.MenuItems>
-        <UserButton.Link label="Your activity" labelIcon={<HistoryIcon size={16} />} href="/me" />
+        {open ? (
+          <UserButton.Action label="Your activity" labelIcon={<HistoryIcon size={16} />} onClick={() => open()} />
+        ) : (
+          <UserButton.Link label="Your activity" labelIcon={<HistoryIcon size={16} />} href="/me" />
+        )}
       </UserButton.MenuItems>
     </UserButton>
   );

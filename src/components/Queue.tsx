@@ -2,6 +2,7 @@ import { SignInButton } from '@clerk/nextjs';
 import { useState } from 'react';
 import { useFavorites } from '../hooks/useFavorites';
 import { AddToPlaylist } from './AddToPlaylist';
+import { ActivityLink } from './activity/ActivityOpener';
 import type { PlayedItem, QueueItem } from '../shared/protocol';
 import { thumbnailUrl } from '../shared/youtube';
 import { SectionHead } from './Frame';
@@ -151,9 +152,9 @@ export function Queue({ queue, played, nowPlayingId, disabled, onPlay, onRemove,
           </ol>
         ))}
       {tab === 'played' && (
-        <a href="/me" className="block border-t border-line px-4 py-2.5 font-mono text-[11px] text-muted transition-colors hover:text-ink sm:px-5">
+        <ActivityLink className="block border-t border-line px-4 py-2.5 font-mono text-[11px] text-muted transition-colors hover:text-ink sm:px-5">
           all your rooms, songs and chat →
-        </a>
+        </ActivityLink>
       )}
       {tab === 'saved' &&
         (!fav.signedIn ? (

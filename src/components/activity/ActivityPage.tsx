@@ -2,7 +2,7 @@
 
 import { SignInButton, useAuth } from '@clerk/nextjs';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { ListeningSession, PersonSummary, SessionChatMessage } from '../../server/accounts/history';
+import type { ListeningSession, PersonSummary, SessionChatMessage, VisitStub } from '../../server/accounts/history';
 import { thumbnailUrl } from '../../shared/youtube';
 import { newRoomId } from '../../shared/room';
 import { authEnabled } from '../../lib/auth-config';
@@ -23,6 +23,8 @@ import { TopBar } from './TopBar';
 interface HistoryData {
   sessions: ListeningSession[];
   people: PersonSummary[];
+  /** Older visits, for streaks and totals. */
+  stubs: VisitStub[];
 }
 
 const TABS = ['rooms', 'songs', 'playlists', 'people'] as const;
@@ -154,7 +156,7 @@ function ActivityTabs({ data, onRemove, loadChat, playlists, notice, notify }: T
         <p className="label p-6">loading…</p>
       ) : tab === 'rooms' ? (
         data.sessions.length ? (
-          <RoomsTab sessions={data.sessions} onRemove={onRemove} loadChat={loadChat} />
+          <RoomsTab sessions={data.sessions} stubs={data.stubs} onRemove={onRemove} loadChat={loadChat} />
         ) : (
           <Empty title="nothing yet">Rooms you listen in for a minute or more show up here, with who was there, the songs and the chat.</Empty>
         )
@@ -176,10 +178,10 @@ function SignedInActivity({ notify }: { notify: (message: string) => void }) {
       .then(({ moved }) => moved > 0 && notify(movedMessage(moved)), () => {})
       .then(() => fetch('/api/history', { cache: 'no-store' }))
       .then((r) => (r.ok ? (r.json() as Promise<HistoryData>) : Promise.reject(new Error())))
-      .then((d) => alive && setData(d))
+      .then((d) => alive && setData({ ...d, stubs: d.stubs ?? [] }))
       .catch(() => {
         if (!alive) return;
-        setData({ sessions: [], people: [] });
+        setData({ sessions: [], people: [], stubs: [] });
         notify('Could not load your activity.');
       });
     return () => {
@@ -200,8 +202,8 @@ function SignedInActivity({ notify }: { notify: (message: string) => void }) {
 }
 
 const fromDevice = (): HistoryData => {
-  const { sessions } = loadLocal();
-  return { sessions, people: summarizePeople(sessions) };
+  const { sessions, stubs } = loadLocal();
+  return { sessions, people: summarizePeople(sessions), stubs };
 };
 
 /** Signed out, or a server without accounts: what this browser remembers. */

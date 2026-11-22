@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { LIMITS } from '../../shared/protocol';
-import { summarizePeople } from '../../lib/activity';
+import { knownLengths, summarizePeople, toStub } from '../../lib/activity';
 
 export interface HistoryPerson {
   name: string;
@@ -25,6 +25,17 @@ export interface ListeningSession {
   tracks: HistoryTrack[];
 }
 
+/** What's kept of a visit once it falls out of the full history: enough for streaks and totals. */
+export interface VisitStub {
+  startedAt: number;
+  endedAt: number;
+  minutes: number;
+  /** Songs it had. */
+  songs: number;
+  /** Their lengths added up (s), as far as known. */
+  seconds: number;
+}
+
 /** A chat message from a room, kept with the session you heard it in. */
 export interface SessionChatMessage {
   id: string;
@@ -46,10 +57,16 @@ export interface HistoryStore {
   appendChat(userId: string, sessionId: string, messages: SessionChatMessage[]): Promise<void>;
   /** Oldest first. */
   listChat(userId: string, sessionId: string): Promise<SessionChatMessage[]>;
+  /** Stubs of visits pruned from the full history, oldest first. */
+  listStubs(userId: string): Promise<VisitStub[]>;
+  /** Adds stubs, keeping the latest STUBS_MAX. */
+  addStubs(userId: string, stubs: VisitStub[]): Promise<void>;
 }
 
 export const HISTORY_MAX = 100;
 export const SESSION_CHAT_MAX = 200;
+/** About a year of a few visits a day; a stub is ~90 bytes. */
+export const STUBS_MAX = 2000;
 const SESSION_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const MESSAGE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -123,6 +140,28 @@ export function parseChat(raw: unknown): SessionChatMessage[] {
 
 const oldestFirst = (a: SessionChatMessage, b: SessionChatMessage) => a.at - b.at;
 
+/** Validates untrusted stubs (a device's older visits joining the account). */
+export function parseStubs(raw: unknown, now = Date.now()): VisitStub[] {
+  if (!Array.isArray(raw)) return [];
+  const out: VisitStub[] = [];
+  for (const item of raw.slice(0, STUBS_MAX)) {
+    if (typeof item !== 'object' || item === null) continue;
+    const r = item as Record<string, unknown>;
+    const [a, b, m, n, sec] = [r.startedAt, r.endedAt, r.minutes, r.songs, r.seconds].map(Number) as [number, number, number, number, number];
+    if (![a, b, m, n, sec].every(Number.isFinite)) continue;
+    if (b < a || b - a > 24 * 3600_000 || b > now + 60_000 || m < 0 || m > (b - a) / 60_000 + 1) continue;
+    if (n < 0 || n > MAX_TRACKS || sec < 0 || sec > MAX_TRACKS * 86_400) continue;
+    out.push({ startedAt: a, endedAt: b, minutes: Math.round(m * 10) / 10, songs: Math.round(n), seconds: Math.round(sec) });
+  }
+  return out;
+}
+
+/** Oldest first, one per visit (two prunes racing can write one twice), the latest STUBS_MAX. */
+export function tidyStubs(stubs: VisitStub[]): VisitStub[] {
+  const byVisit = new Map(stubs.map((s) => [`${s.startedAt}:${s.endedAt}`, s]));
+  return [...byVisit.values()].sort((a, b) => a.startedAt - b.startedAt).slice(-STUBS_MAX);
+}
+
 // Pure and browser-safe, so the device-only history on /me can use it too.
 export { summarizePeople, type PersonSummary } from '../../lib/activity';
 
@@ -134,6 +173,7 @@ export class RedisHistory implements HistoryStore {
 
   private key = (userId: string) => `${this.prefix}:user:${userId}:history`;
   private chatKey = (userId: string, sessionId: string) => `${this.prefix}:user:${userId}:chat:${sessionId}`;
+  private stubsKey = (userId: string) => `${this.prefix}:user:${userId}:stubs`;
 
   async list(userId: string): Promise<ListeningSession[]> {
     const all = await this.redis.hgetall<Record<string, string>>(this.key(userId));
@@ -153,10 +193,14 @@ export class RedisHistory implements HistoryStore {
     await this.redis.hset(key, { [session.id]: JSON.stringify(session) });
     // Keep only the newest HISTORY_MAX sessions (pruned in batches, not on every write).
     if ((await this.redis.hlen(key)) > HISTORY_MAX + 20) {
-      const stale = (await this.list(userId)).slice(HISTORY_MAX).map((s) => s.id);
+      const all = await this.list(userId);
+      const stale = all.slice(HISTORY_MAX);
       if (stale.length) {
-        await this.redis.hdel(key, ...stale);
-        await this.redis.del(...stale.map((id) => this.chatKey(userId, id)));
+        // Pruned visits leave a stub behind, so streaks and totals still count them.
+        const known = knownLengths(all);
+        await this.addStubs(userId, stale.map((s) => toStub(s, known)));
+        await this.redis.hdel(key, ...stale.map((s) => s.id));
+        await this.redis.del(...stale.map((s) => this.chatKey(userId, s.id)));
       }
     }
   }
@@ -186,11 +230,32 @@ export class RedisHistory implements HistoryStore {
     }
     return out.sort(oldestFirst);
   }
+
+  async listStubs(userId: string): Promise<VisitStub[]> {
+    const raw = await this.redis.lrange<string>(this.stubsKey(userId), 0, -1);
+    const out: VisitStub[] = [];
+    for (const r of raw ?? []) {
+      try {
+        out.push(typeof r === 'string' ? (JSON.parse(r) as VisitStub) : (r as VisitStub));
+      } catch {
+        /* skip corrupt entry */
+      }
+    }
+    return tidyStubs(out);
+  }
+
+  async addStubs(userId: string, stubs: VisitStub[]): Promise<void> {
+    if (stubs.length === 0) return;
+    const key = this.stubsKey(userId);
+    await this.redis.rpush(key, ...stubs.map((s) => JSON.stringify(s)));
+    await this.redis.ltrim(key, -STUBS_MAX, -1);
+  }
 }
 
 export class MemoryHistory implements HistoryStore {
   private readonly users = new Map<string, Map<string, ListeningSession>>();
   private readonly chats = new Map<string, Map<string, SessionChatMessage>>();
+  private readonly stubs = new Map<string, VisitStub[]>();
 
   async list(userId: string): Promise<ListeningSession[]> {
     return [...(this.users.get(userId)?.values() ?? [])].sort(newestFirst);
@@ -200,7 +265,14 @@ export class MemoryHistory implements HistoryStore {
     let m = this.users.get(userId);
     if (!m) this.users.set(userId, (m = new Map()));
     m.set(session.id, structuredClone(session));
-    if (m.size > HISTORY_MAX) for (const s of (await this.list(userId)).slice(HISTORY_MAX)) await this.remove(userId, s.id);
+    if (m.size > HISTORY_MAX) {
+      const all = await this.list(userId);
+      const known = knownLengths(all);
+      for (const s of all.slice(HISTORY_MAX)) {
+        await this.addStubs(userId, [toStub(s, known)]);
+        await this.remove(userId, s.id);
+      }
+    }
   }
 
   async remove(userId: string, sessionId: string): Promise<void> {
@@ -217,6 +289,14 @@ export class MemoryHistory implements HistoryStore {
 
   async listChat(userId: string, sessionId: string): Promise<SessionChatMessage[]> {
     return [...(this.chats.get(`${userId}:${sessionId}`)?.values() ?? [])].sort(oldestFirst);
+  }
+
+  async listStubs(userId: string): Promise<VisitStub[]> {
+    return tidyStubs(this.stubs.get(userId) ?? []);
+  }
+
+  async addStubs(userId: string, stubs: VisitStub[]): Promise<void> {
+    this.stubs.set(userId, [...(this.stubs.get(userId) ?? []), ...stubs.map((s) => ({ ...s }))].slice(-STUBS_MAX));
   }
 }
 
@@ -236,10 +316,17 @@ export async function handleHistory(
         if (!SESSION_ID.test(input.sessionId)) return { status: 400, body: { error: 'Invalid sessionId.' } };
         return { status: 200, body: { chat: await store.listChat(userId, input.sessionId) } };
       }
-      const sessions = await store.list(userId);
-      return { status: 200, body: { sessions, people: summarizePeople(sessions) } };
+      const [sessions, stubs] = await Promise.all([store.list(userId), store.listStubs(userId)]);
+      return { status: 200, body: { sessions, people: summarizePeople(sessions), stubs } };
     }
     case 'POST': {
+      // { stubs: [...] }: a device's older visits joining the account.
+      const b = input.body as { stubs?: unknown; id?: unknown } | null;
+      if (b && typeof b === 'object' && Array.isArray(b.stubs) && b.id === undefined) {
+        const stubs = parseStubs(b.stubs, now);
+        await store.addStubs(userId, stubs);
+        return { status: 200, body: { ok: true, added: stubs.length } };
+      }
       const session = parseSession(input.body, now);
       if (!session) return { status: 400, body: { error: 'Invalid session.' } };
       // Under a minute of actual listening isn't worth remembering.

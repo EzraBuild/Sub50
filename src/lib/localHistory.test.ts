@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ListeningSession } from '../server/accounts/history';
-import { LOCAL_SESSIONS_MAX, clearLocal, loadLocal, removeLocal, upsertLocal } from './localHistory';
+import { LOCAL_SESSIONS_MAX, clearLocal, clearLocalStubs, loadLocal, removeLocal, upsertLocal } from './localHistory';
 
 function memory() {
   const m = new Map<string, string>();
@@ -29,14 +29,27 @@ test('keeps the newest sessions (and drops their chat), remove and clear', () =>
   removeLocal(h.sessions[0]!.id, s);
   assert.equal(loadLocal(s).sessions.length, LOCAL_SESSIONS_MAX - 1);
   clearLocal(s);
-  assert.deepEqual(loadLocal(s), { sessions: [], chats: {} });
+  assert.deepEqual(loadLocal(s), { sessions: [], chats: {}, stubs: [] });
 });
 
 test('corrupt or missing storage reads as empty, and writes never throw', () => {
   const s = memory();
   s.raw.set('sub50:history', '{nope');
-  assert.deepEqual(loadLocal(s), { sessions: [], chats: {} });
-  assert.deepEqual(loadLocal(null), { sessions: [], chats: {} });
+  assert.deepEqual(loadLocal(s), { sessions: [], chats: {}, stubs: [] });
+  assert.deepEqual(loadLocal(null), { sessions: [], chats: {}, stubs: [] });
   const full = { ...memory(), setItem: () => { throw new Error('QuotaExceededError'); } };
   assert.doesNotThrow(() => upsertLocal(session('sess-a-0001', 1), [], full));
+});
+
+test('sessions pushed off the device leave a stub behind', () => {
+  const s = memory();
+  for (let i = 0; i < LOCAL_SESSIONS_MAX + 2; i++) upsertLocal(session(`sess-${String(i).padStart(6, '0')}`, 100_000 + i, 2), [], s);
+  const h = loadLocal(s);
+  assert.deepEqual(h.stubs, [
+    { startedAt: 40_000, endedAt: 100_000, minutes: 2, songs: 0, seconds: 0 },
+    { startedAt: 40_001, endedAt: 100_001, minutes: 2, songs: 0, seconds: 0 },
+  ]);
+  clearLocalStubs(s);
+  assert.equal(loadLocal(s).stubs.length, 0);
+  assert.equal(loadLocal(s).sessions.length, LOCAL_SESSIONS_MAX, 'sessions untouched');
 });

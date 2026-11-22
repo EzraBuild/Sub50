@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { newRoomId } from '../../shared/room';
 import { playAllUrl, stashTitles } from '../../lib/playAll';
-import type { ListeningSession, SessionChatMessage } from '../../server/accounts/history';
+import type { ListeningSession, SessionChatMessage, VisitStub } from '../../server/accounts/history';
 import { thumbnailUrl } from '../../shared/youtube';
 import { formatMinutes, formatMusic, formatWhen, knownLengths, musicLength, totals } from '../../lib/activity';
 import { Avatar } from '../Avatar';
@@ -155,13 +155,13 @@ function Stat({ label, value, hint }: { label: string; value: string; hint: stri
 }
 
 /** Rooms, time listened, songs and music, added up. */
-function TotalsRow({ sessions }: { sessions: ListeningSession[] }) {
-  const t = totals(sessions);
+function TotalsRow({ sessions, stubs }: { sessions: ListeningSession[]; stubs: VisitStub[] }) {
+  const t = totals(sessions, stubs);
   return (
     <div className="grid grid-cols-2 border-b border-line sm:grid-cols-4 [&>*]:border-line max-sm:[&>*:nth-child(-n+2)]:border-b max-sm:[&>*:nth-child(odd)]:border-r sm:[&>*:not(:last-child)]:border-r">
       <Stat label="rooms" value={String(t.rooms)} hint="Visits of a minute or more" />
       <Stat label="listened" value={formatMinutes(t.minutes)} hint="Time the room was playing while you were in it" />
-      <Stat label="songs" value={String(t.songs)} hint="Different songs you’ve heard" />
+      <Stat label="songs" value={String(t.songs)} hint={stubs.length ? 'Different songs in the rooms listed below' : 'Different songs you’ve heard'} />
       <Stat
         label="music"
         value={formatMusic(t.music) ?? '—'}
@@ -171,12 +171,20 @@ function TotalsRow({ sessions }: { sessions: ListeningSession[] }) {
   );
 }
 
-export function RoomsTab({ sessions, onRemove, loadChat }: { sessions: ListeningSession[]; onRemove: (id: string) => void; loadChat: ChatLoader }) {
+interface RoomsTabProps {
+  sessions: ListeningSession[];
+  /** Older visits: counted in the totals, not listed. */
+  stubs: VisitStub[];
+  onRemove: (id: string) => void;
+  loadChat: ChatLoader;
+}
+
+export function RoomsTab({ sessions, stubs, onRemove, loadChat }: RoomsTabProps) {
   const [room] = useState(newRoomId); // "Play all" opens this fresh room
   const known = useMemo(() => knownLengths(sessions), [sessions]);
   return (
     <>
-      <TotalsRow sessions={sessions} />
+      <TotalsRow sessions={sessions} stubs={stubs} />
       <ol className="divide-y divide-line">
         {sessions.map((s) => (
           <SessionRow key={s.id} session={s} room={room} known={known} onRemove={() => onRemove(s.id)} loadChat={loadChat} />

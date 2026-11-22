@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HISTORY_MAX, MemoryHistory, SESSION_CHAT_MAX, handleHistory, parseChat, parseSession, summarizePeople, type ListeningSession } from './history';
+import { HISTORY_MAX, MemoryHistory, SESSION_CHAT_MAX, STUBS_MAX, handleHistory, parseChat, parseSession, parseStubs, summarizePeople, tidyStubs, type ListeningSession } from './history';
 
 const NOW = 1_800_000_000_000;
 const session = (over: Partial<ListeningSession> = {}): ListeningSession => ({
@@ -94,4 +94,27 @@ test('parseChat drops bad messages and trims long ones', () => {
   const parsed = parseChat([chatMsg('ok', 1), { id: 'bad id!', text: 'x', at: 1 }, { id: 'e', text: '   ', at: 1 }, { id: 'n', text: 'x', at: 'later' }, { ...chatMsg('long', 2), text: 'y'.repeat(900), mine: true }, 'junk']);
   assert.deepEqual(parsed.map((m) => [m.id, m.text.length, m.mine]), [['ok', 2, false], ['long', 500, true]]);
   assert.deepEqual(parseChat('nope'), []);
+});
+
+test('pruned visits leave a stub; deleting one by hand does not', async () => {
+  const store = new MemoryHistory();
+  const withLength = { tracks: [{ videoId: 'dQw4w9WgXcQ', title: 'Never Gonna', seconds: 213 }] };
+  for (let i = 0; i < HISTORY_MAX + 3; i++) await store.upsert('u1', session({ id: `sess-${String(i).padStart(6, '0')}`, startedAt: NOW - 1e7 + i * 1000, endedAt: NOW - 1e7 + i * 1000 + 600, minutes: 0.01, ...(i === HISTORY_MAX ? withLength : {}) }));
+  const stubs = await store.listStubs('u1');
+  assert.equal(stubs.length, 3);
+  assert.deepEqual(stubs[0], { startedAt: NOW - 1e7, endedAt: NOW - 1e7 + 600, minutes: 0.01, songs: 1, seconds: 213 }, 'an old song borrows its length from a later visit');
+  await store.remove('u1', (await store.list('u1'))[0]!.id);
+  assert.equal((await store.listStubs('u1')).length, 3);
+  const got = await handleHistory('GET', 'u1', store, {});
+  assert.equal((got.body as { stubs: unknown[] }).stubs.length, 3);
+});
+
+test('a device posts its stubs: validated, added, one per visit', async () => {
+  const store = new MemoryHistory();
+  const good = { startedAt: NOW - 7_200_000, endedAt: NOW - 3_600_000, minutes: 50, songs: 12, seconds: 2900 };
+  const res = await handleHistory('POST', 'u1', store, { body: { stubs: [good, good, { ...good, endedAt: NOW + 3_600_000 }, { ...good, minutes: 999 }, 'junk'] } }, NOW);
+  assert.deepEqual(res, { status: 200, body: { ok: true, added: 2 } });
+  assert.deepEqual(await store.listStubs('u1'), [good], 'the duplicate collapses on read');
+  assert.equal(parseStubs({}).length, 0);
+  assert.equal(tidyStubs(Array.from({ length: STUBS_MAX + 5 }, (_, i) => ({ ...good, startedAt: i, endedAt: i + 1 }))).length, STUBS_MAX);
 });

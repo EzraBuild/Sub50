@@ -11,18 +11,19 @@ const Opener = createContext<OpenActivity | null>(null);
 export const ActivityOpenerProvider = Opener.Provider;
 export const useActivityOpener = () => useContext(Opener);
 
-/** In a room: adds a song to its queue (plays it if nothing is on). */
-export type QueueSong = (song: { videoId: string; title: string }) => void;
+/** In a room: adds songs to its queue in order (the first plays if nothing is on). */
+export type QueueSong = (songs: { videoId: string; title: string }[]) => void;
 const Queuer = createContext<QueueSong | null>(null);
 /** Provided around the panel over a room; absent on /me. */
 export const RoomQueueProvider = Queuer.Provider;
+export const useRoomQueue = () => useContext(Queuer);
 
 /** "+" that adds a song from your history to the room you're in; nothing outside a room. */
 export function QueueButton({ videoId, title, className }: { videoId: string; title: string; className: string }) {
   const queue = useContext(Queuer);
   if (!queue) return null;
   return (
-    <button type="button" onClick={() => queue({ videoId, title })} className={className} aria-label={`Add ${title || videoId} to this room's queue`} title="Add to this room's queue">
+    <button type="button" onClick={() => queue([{ videoId, title }])} className={className} aria-label={`Add ${title || videoId} to this room's queue`} title="Add to this room's queue">
       <PlusIcon size={14} />
     </button>
   );

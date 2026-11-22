@@ -168,11 +168,16 @@ export default function Sub50App({ roomId }: { roomId: string }) {
   const [activityTab, setActivityTab] = useState<string | null>(null);
   const openActivity = useCallback((tab?: string) => setActivityTab(tab ?? 'rooms'), []);
   const closeActivity = useCallback(() => setActivityTab(null), []);
-  // From the panel: a song from your history into this room's queue.
-  const queueSong: QueueSong = ({ videoId, title }) => {
-    const ok = actions.queueAdd(`https://youtu.be/${videoId}`, title || undefined);
+  // From the panel: songs from your history into this room's queue (one past room or song at a time, ≤ BATCH_MAX).
+  const queueSongs: QueueSong = (songs) => {
+    const items = songs.slice(0, LIMITS.BATCH_MAX).map(({ videoId, title }) => ({ videoId, ...(title ? { title } : {}) }));
+    if (!items.length) return;
+    const ok = actions.queueAddMany(items);
     send(ok);
-    if (ok) notify(state?.videoId ? `Added “${title || videoId}” to the queue.` : `Playing “${title || videoId}”.`);
+    if (!ok) return;
+    const first = songs[0]!.title || songs[0]!.videoId;
+    if (items.length === 1) notify(state?.videoId ? `Added “${first}” to the queue.` : `Playing “${first}”.`);
+    else notify(state?.videoId ? `Added ${items.length} songs to the queue.` : `Playing ${items.length} songs, one after another.`);
   };
   const chatAlerts = useChatNotifications({ messages, selfId, roomId, serverNow: () => client.clock.serverNow(), onBlocked: notify });
   // Lock screen / notification controls act on the whole room (where the browser routes them to us).
@@ -309,7 +314,7 @@ export default function Sub50App({ roomId }: { roomId: string }) {
           onReject={notify}
         />
         {activityTab !== null && (
-          <RoomQueueProvider value={queueSong}>
+          <RoomQueueProvider value={queueSongs}>
             <ActivitySheet tab={activityTab} roomId={roomId} notify={notify} onClose={closeActivity} />
           </RoomQueueProvider>
         )}

@@ -5,9 +5,9 @@ import type { ListeningSession, SessionChatMessage, VisitStub } from '../../serv
 import { thumbnailUrl } from '../../shared/youtube';
 import { byMonth, formatMinutes, formatMusic, formatWhen, knownLengths, musicLength, totals } from '../../lib/activity';
 import { Avatar } from '../Avatar';
-import { ChevronIcon, CloseIcon, PlayIcon } from '../icons';
+import { ChevronIcon, CloseIcon, PlayIcon, PlusIcon } from '../icons';
 import { MonthGroup } from './MonthGroup';
-import { QueueButton } from './ActivityOpener';
+import { QueueButton, useRoomQueue } from './ActivityOpener';
 
 export const personId = (name: string) => `name:${name.toLowerCase()}`;
 
@@ -17,6 +17,21 @@ export type ChatLoader = (sessionId: string) => Promise<SessionChatMessage[]>;
 
 /** Opens `room` with these songs queued in order; titles ride along. */
 export function PlayAllLink({ room, tracks, label = 'Play all' }: { room: string; tracks: { videoId: string; title: string }[]; label?: string }) {
+  // Over a room, these songs go into that room's queue instead of a new room.
+  const queue = useRoomQueue();
+  if (queue) {
+    return (
+      <button
+        type="button"
+        onClick={() => queue(tracks)}
+        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-line bg-sunken px-2.5 font-mono text-[11px] text-ink-2 transition hover:border-line-strong hover:text-ink"
+        title="Add these to the room you're in, in order"
+      >
+        <PlusIcon size={11} />
+        {tracks.length === 1 ? 'Add here' : `Add all ${tracks.length} here`}
+      </button>
+    );
+  }
   return (
     <a
       href={playAllUrl(room, tracks)}

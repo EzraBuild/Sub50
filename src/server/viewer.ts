@@ -29,6 +29,13 @@ export async function currentViewer(): Promise<Viewer | null> {
 
 export type RoomAccess = { locked: false; pass: string | null } | { locked: true; signedIn: boolean; email: string | null };
 
+/** Pages outside the room (activity, a playlist): may this visitor search songs, and with which pass? */
+export async function searchAccess(): Promise<{ searchEnabled: boolean; pass: string | null }> {
+  const access = await roomAccess();
+  if (access.locked) return { searchEnabled: false, pass: null };
+  return { searchEnabled: !!process.env.YOUTUBE_API_KEY, pass: access.pass };
+}
+
 /** The room page's question: may this visitor in, and with which pass for the socket? */
 export async function roomAccess(): Promise<RoomAccess> {
   if (!authEnabled) return { locked: false, pass: null };

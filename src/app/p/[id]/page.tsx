@@ -3,7 +3,7 @@ import { authEnabled } from '../../../lib/auth-config';
 import { isPlaylistId } from '../../../server/accounts/playlists';
 import { accountStores } from '../../../server/accounts/store';
 import { PlaylistShell } from '../../../components/playlist/PlaylistShell';
-import { roomAccess } from '../../../server/viewer';
+import { searchAccess } from '../../../server/viewer';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -28,8 +28,5 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function Page({ params }: Props) {
   const { id } = await params;
-  // Adding songs by name uses search: only with a YouTube key, and (invite-only) a pass.
-  const access = await roomAccess();
-  const pass = access.locked ? null : access.pass;
-  return <PlaylistShell id={id} searchEnabled={!!process.env.YOUTUBE_API_KEY && !access.locked} pass={pass} />;
+  return <PlaylistShell id={id} {...await searchAccess()} />;
 }

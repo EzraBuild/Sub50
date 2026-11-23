@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { parseYouTubeId, thumbnailUrl } from '../shared/youtube';
 import type { SearchResult } from '../server/search';
 import { formatTime } from './Scrubber';
-import { accessPass } from '../lib/accessPass';
+import { searchSongs } from '../lib/songSearch';
 import { CloseIcon, LinkIcon, PlayIcon, PlusIcon, SearchIcon } from './icons';
 
 interface Props {
@@ -44,13 +44,10 @@ export function UrlBar({ disabled, onPlayNow, onQueue, searchEnabled = false, on
     const id = ++asked.current; // only the latest search may show
     setFound({ state: 'loading' });
     try {
-      const pass = accessPass();
-      const r = await fetch(`/api/search?q=${encodeURIComponent(text)}`, pass ? { headers: { 'x-sub50-pass': pass } } : undefined);
-      const body = (await r.json()) as { results?: SearchResult[]; error?: string };
-      if (id !== asked.current) return;
-      setFound(r.ok && body.results ? { state: 'done', q: text, results: body.results } : { state: 'error', message: body.error ?? 'Search failed.' });
-    } catch {
-      if (id === asked.current) setFound({ state: 'error', message: 'Couldn’t reach search. Check your connection.' });
+      const results = await searchSongs(text);
+      if (id === asked.current) setFound({ state: 'done', q: text, results });
+    } catch (e) {
+      if (id === asked.current) setFound({ state: 'error', message: (e as Error).message });
     }
   };
 

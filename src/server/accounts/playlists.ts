@@ -193,7 +193,8 @@ export async function handlePlaylist(
   viewer: Viewer | null,
   store: PlaylistStore,
   id: string,
-  input: { body?: unknown; copy?: boolean; ownerName?: string },
+  /** titleOf: looks up a song's title when an add comes without one (a pasted link). */
+  input: { body?: unknown; copy?: boolean; ownerName?: string; titleOf?: (videoId: string) => Promise<string | null> },
   now = Date.now(),
   newId = newPlaylistId,
 ): Promise<Result> {
@@ -251,6 +252,7 @@ export async function handlePlaylist(
       if (!track) return err(400, 'Expected { op: "add", videoId, title }.');
       if (p.tracks.some((t) => t.videoId === track.videoId)) return { status: 200, body: { playlist: toPublic(p, viewer!.id), already: true } };
       if (p.tracks.length >= PLAYLIST_TRACKS_MAX) return err(409, `A playlist holds up to ${PLAYLIST_TRACKS_MAX} songs.`);
+      if (!track.title && input.titleOf) track.title = clean(await input.titleOf(track.videoId).catch(() => null), LIMITS.TITLE_MAX);
       p.tracks.push(track);
       break;
     }

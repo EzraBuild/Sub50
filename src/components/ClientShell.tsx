@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { LogoMark } from './icons';
 import { setAccessPass } from '../lib/accessPass';
+import { setSearchEnabled } from '../lib/songSearch';
 
 /**
  * The player is browser-only (YouTube IFrame API, autoplay unlock, localStorage),
@@ -19,5 +20,6 @@ const Sub50App = dynamic(() => import('./Sub50App'), {
 
 export function ClientShell({ roomId, searchEnabled, pass = null }: { roomId: string; searchEnabled: boolean; pass?: string | null }) {
   setAccessPass(pass); // before the room connects: the socket and search carry it
+  setSearchEnabled(searchEnabled);
   return <Sub50App roomId={roomId} searchEnabled={searchEnabled} />;
 }

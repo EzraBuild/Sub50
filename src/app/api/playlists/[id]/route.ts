@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { authEnabled } from '../../../../lib/auth-config';
 import { handlePlaylist } from '../../../../server/accounts/playlists';
 import { accountStores } from '../../../../server/accounts/store';
+import { resolveTitle } from '../../../../server/titles';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,7 @@ async function respond(req: Request, method: string, { params }: Ctx): Promise<R
   if (!authEnabled) return Response.json({ error: 'Accounts are not enabled on this server.' }, { status: 404 });
   const [{ id }, { userId }] = await Promise.all([params, auth()]);
   const body = method === 'PATCH' ? await req.json().catch(() => null) : undefined;
-  const result = await handlePlaylist(method, userId ? { id: userId } : null, accountStores().playlists, id, { body });
+  const result = await handlePlaylist(method, userId ? { id: userId } : null, accountStores().playlists, id, { body, titleOf: resolveTitle });
   return Response.json(result.body, { status: result.status, headers: { 'cache-control': 'no-store' } });
 }
 

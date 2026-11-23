@@ -1,6 +1,8 @@
 import { upgradeWebSocket } from '@vercel/functions';
 import { getHostedHub } from '../../../server/hosted';
 import { attachSocket } from '../../../server/socket';
+import { requestAllowed } from '../../../server/access';
+import { accountStores } from '../../../server/accounts/store';
 
 /**
  * The sync socket on Vercel. A Function can hold a WebSocket open until its max
@@ -13,7 +15,10 @@ import { attachSocket } from '../../../server/socket';
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
-export async function GET(): Promise<Response> {
+export async function GET(req: Request): Promise<Response> {
+  if (!(await requestAllowed(new URL(req.url).searchParams.get('pass'), accountStores().access))) {
+    return new Response('Sub50 is private for now.', { status: 403 });
+  }
   const hub = getHostedHub();
   return upgradeWebSocket((ws) => attachSocket(hub, ws), { maxPayload: 16 * 1024 });
 }

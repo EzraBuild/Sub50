@@ -2,11 +2,14 @@ import { Redis } from '@upstash/redis';
 import { MemoryFavorites, RedisFavorites, type FavoritesStore } from './favorites';
 import { MemoryHistory, RedisHistory, type HistoryStore } from './history';
 import { MemoryPlaylists, RedisPlaylists, type PlaylistStore } from './playlists';
+import { MemoryAccess, RedisAccess, type AccessStore } from '../access';
 
 interface AccountStores {
   favorites: FavoritesStore;
   history: HistoryStore;
   playlists: PlaylistStore;
+  /** Invite-only mode: on/off and allowed emails. */
+  access: AccessStore;
   redis: Redis | null;
 }
 
@@ -27,6 +30,7 @@ export function accountStores(): AccountStores {
       favorites: redis ? new RedisFavorites(redis) : new MemoryFavorites(),
       history: redis ? new RedisHistory(redis) : new MemoryHistory(),
       playlists: redis ? new RedisPlaylists(redis) : new MemoryPlaylists(),
+      access: redis ? new RedisAccess(redis) : new MemoryAccess(),
     };
   }
   return g.__sub50Accounts;

@@ -114,6 +114,7 @@ export function readPass(token: string | null | undefined, secret: string, now =
 
 /** For the room socket and search: may a request carrying this pass go ahead right now? */
 export async function passAllows(token: string | null | undefined, deps: { store: AccessStore; owners: string[]; secret: string | null; now?: number }): Promise<boolean> {
+  if (deps.owners.length === 0) return true; // nobody could switch it off: ignored, no lookup
   const state = await deps.store.get();
   if (!inForce(state, deps.owners)) return true;
   if (!deps.secret) return false;
@@ -147,4 +148,9 @@ export async function handleAccessAdmin(
   }
   if (typeof b.remove === 'string') await store.remove(normalizeEmail(b.remove));
   return { status: 200, body: await view() };
+}
+
+/** The socket and search, wired to the real store: may a request with this pass go ahead? */
+export async function requestAllowed(pass: string | null | undefined, store: AccessStore): Promise<boolean> {
+  return passAllows(pass, { store, owners: ownerEmails(), secret: passSecret() });
 }

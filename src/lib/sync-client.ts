@@ -1,3 +1,4 @@
+import { withPass } from './accessPass';
 import type { ClientMessage, ServerMessage } from '../shared/protocol';
 import { ClockSync, clientNow } from './clock';
 
@@ -101,7 +102,7 @@ export class SyncClient {
 
   private connect(): void {
     this.setStatus('connecting');
-    const ws = new WebSocket(this.url);
+    const ws = new WebSocket(withPass(this.url));
     this.ws = ws;
 
     ws.onopen = () => {

@@ -11,6 +11,8 @@ import { WebSocketServer } from 'ws';
 import { SyncHub } from './src/server/hub';
 import { getLanAddresses } from './src/server/net';
 import { attachSocket } from './src/server/socket';
+import { requestAllowed } from './src/server/access';
+import { accountStores } from './src/server/accounts/store';
 import { MemoryStore } from './src/server/store/memory';
 import { resolveTitle } from './src/server/titles';
 
@@ -60,7 +62,15 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024, perMess
 server.on('upgrade', (req, socket, head) => {
   const path = req.url?.split('?')[0] ?? '';
   if (path === SYNC_PATH) {
-    wss.handleUpgrade(req, socket, head, (ws) => attachSocket(hub, ws, { lanAddresses: getLanAddresses }));
+    // Invite-only: no valid pass, no socket (the same check as the Vercel route).
+    const pass = new URL(req.url ?? '/', 'http://local').searchParams.get('pass');
+    void requestAllowed(pass, accountStores().access).then(
+      (ok) => {
+        if (ok) wss.handleUpgrade(req, socket, head, (ws) => attachSocket(hub, ws, { lanAddresses: getLanAddresses }));
+        else socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      },
+      () => socket.destroy(),
+    );
   } else if (path.startsWith('/_next/') && nextUpgrades.listenerCount('upgrade') > 0) {
     nextUpgrades.emit('upgrade', req, socket, head); // dev HMR, handled by Next's own listener
   } else {

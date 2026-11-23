@@ -1,6 +1,7 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { authEnabled } from '../lib/auth-config';
-import { normalizeEmail } from './access';
+import { allowedEmail, inForce, normalizeEmail, ownerEmails, passSecret, signPass } from './access';
+import { accountStores } from './accounts/store';
 
 export interface Viewer {
   userId: string;
@@ -24,4 +25,21 @@ export async function currentViewer(): Promise<Viewer | null> {
   if (cache.size > 1000) cache.clear();
   cache.set(userId, { at: Date.now(), emails });
   return { userId, emails };
+}
+
+export type RoomAccess = { locked: false; pass: string | null } | { locked: true; signedIn: boolean; email: string | null };
+
+/** The room page's question: may this visitor in, and with which pass for the socket? */
+export async function roomAccess(): Promise<RoomAccess> {
+  if (!authEnabled) return { locked: false, pass: null };
+  const owners = ownerEmails();
+  if (owners.length === 0) return { locked: false, pass: null };
+  const state = await accountStores().access.get();
+  if (!inForce(state, owners)) return { locked: false, pass: null };
+  const viewer = await currentViewer();
+  if (!viewer) return { locked: true, signedIn: false, email: null };
+  const email = allowedEmail(viewer.emails, state, owners);
+  const secret = passSecret();
+  if (!email || !secret) return { locked: true, signedIn: true, email: viewer.emails[0] ?? null };
+  return { locked: false, pass: signPass(email, secret) };
 }

@@ -62,3 +62,12 @@ test('owner API: only owners, switch and list', async () => {
   assert.deepEqual(r.body, { private: false, allowed: [], owners });
   assert.equal((await handleAccessAdmin('DELETE', me, store, owners)).status, 405);
 });
+
+test('no owner configured: the socket and search never look the switch up', async () => {
+  const store = new MemoryAccess();
+  await store.setPrivate(true);
+  let lookups = 0;
+  const counting = { ...store, get: () => (lookups++, store.get()), setPrivate: store.setPrivate, allow: store.allow, remove: store.remove };
+  assert.equal(await passAllows(null, { store: counting, owners: [], secret: SECRET }), true);
+  assert.equal(lookups, 0);
+});

@@ -16,7 +16,8 @@ const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digi
 export type ChatLoader = (sessionId: string) => Promise<SessionChatMessage[]>;
 
 /** Opens `room` with these songs queued in order; titles ride along. */
-export function PlayAllLink({ room, tracks, label = 'Play all' }: { room: string; tracks: { videoId: string; title: string }[]; label?: string }) {
+/** href: where the new room comes from (a playlist uses its own link); by default the songs ride in the URL. */
+export function PlayAllLink({ room, tracks, label = 'Play all', href }: { room: string; tracks: { videoId: string; title: string }[]; label?: string; href?: string }) {
   // Over a room, these songs go into that room's queue instead of a new room.
   const queue = useRoomQueue();
   if (queue) {
@@ -34,8 +35,8 @@ export function PlayAllLink({ room, tracks, label = 'Play all' }: { room: string
   }
   return (
     <a
-      href={playAllUrl(room, tracks)}
-      onClick={() => stashTitles(tracks)}
+      href={href ?? playAllUrl(room, tracks)}
+      onClick={() => !href && stashTitles(tracks)}
       className="inline-flex h-7 items-center gap-1.5 rounded-md border border-line bg-sunken px-2.5 font-mono text-[11px] text-ink-2 transition hover:border-line-strong hover:text-ink"
       title="Play these in a new room, one after another"
     >

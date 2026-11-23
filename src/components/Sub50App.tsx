@@ -49,7 +49,7 @@ function loadVideoPref(): boolean {
 }
 
 /** The whole player. Browser-only: rendered through ClientShell with SSR off. */
-export default function Sub50App({ roomId }: { roomId: string }) {
+export default function Sub50App({ roomId, searchEnabled = false }: { roomId: string; searchEnabled?: boolean }) {
   const [name, setName] = useState(loadName);
   const [entered, setEntered] = useState(false);
   const [showVideo, setShowVideo] = useState(loadVideoPref);
@@ -236,8 +236,19 @@ export default function Sub50App({ roomId }: { roomId: string }) {
                 Listen in lockstep.
                 <span className="text-faint"> Every device, one beat, under 50ms.</span>
               </h1>
-              <div className="rise mt-7 max-w-3xl" style={{ animationDelay: '120ms' }}>
-                <UrlBar disabled={!connected} onPlayNow={(url) => send(actions.changeVideo(url))} onQueue={(url) => send(actions.queueAdd(url))} />
+              {/* z-10: the search results open over the deck below (the rise animation's transform makes a stacking context). */}
+              <div className="rise relative z-10 mt-7 max-w-3xl" style={{ animationDelay: '120ms' }}>
+                <UrlBar
+                  disabled={!connected}
+                  onPlayNow={(url) => send(actions.changeVideo(url))}
+                  onQueue={(url) => send(actions.queueAdd(url))}
+                  searchEnabled={searchEnabled}
+                  onQueueTrack={(videoId, title) => {
+                    const ok = actions.queueAdd(`https://youtu.be/${videoId}`, title || undefined);
+                    send(ok);
+                    if (ok) notify(state?.videoId ? `Queued “${title || videoId}”.` : `Playing “${title || videoId}”.`);
+                  }}
+                />
               </div>
             </div>
             <Cross at="bl" className="hidden min-[1201px]:block" />

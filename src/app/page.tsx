@@ -11,5 +11,5 @@ export default async function Page({ searchParams }: Props) {
   const { room } = await searchParams;
   const roomId = parseRoomId(room);
   if (!roomId) redirect(`/?room=${newRoomId()}`);
-  return <ClientShell roomId={roomId} />;
+  return <ClientShell roomId={roomId} searchEnabled={!!process.env.YOUTUBE_API_KEY} />;
 }

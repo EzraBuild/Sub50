@@ -64,6 +64,19 @@ test('add (no duplicates), move, remove, rename', async () => {
   assert.equal((await handlePlaylist('PATCH', ME, store, p.id, { body: { op: 'explode' } })).status, 400);
 });
 
+test('an add without a title (a pasted link) gets its title looked up', async () => {
+  const store = new MemoryPlaylists();
+  const p = await create(store);
+  const asked: string[] = [];
+  const titleOf = async (v: string) => (asked.push(v), v === V1 ? '  Song   One ' : null);
+  await handlePlaylist('PATCH', ME, store, p.id, { body: { op: 'add', videoId: V1 }, titleOf });
+  await handlePlaylist('PATCH', ME, store, p.id, { body: { op: 'add', videoId: V2, title: 'Given' }, titleOf });
+  await handlePlaylist('PATCH', ME, store, p.id, { body: { op: 'add', videoId: V3 }, titleOf: async () => Promise.reject(new Error('offline')) });
+  const out = ((await handlePlaylist('GET', ME, store, p.id, {})).body as { playlist: PublicPlaylist }).playlist;
+  assert.deepEqual(out.tracks.map((t) => t.title), ['Song One', 'Given', '']);
+  assert.deepEqual(asked, [V1]); // a given title is kept, no lookup
+});
+
 test('copy a shared playlist into mine (private), and caps', async () => {
   const store = new MemoryPlaylists();
   const p = await create(store, { tracks: [{ videoId: V1, title: 'x' }], visibility: 'link' });

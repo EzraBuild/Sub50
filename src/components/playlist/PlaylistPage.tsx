@@ -11,6 +11,7 @@ import { useAccountName } from '../Account';
 import { TopBar } from '../activity/TopBar';
 import { ToastView } from '../Gate';
 import { ArrowDownIcon, ArrowUpIcon, CheckIcon, CloseIcon, LinkIcon, PlayIcon } from '../icons';
+import { SongAdder, type NewSong } from './SongAdder';
 
 function Notice({ title, children }: { title: string; children?: ReactNode }) {
   return (
@@ -80,6 +81,10 @@ function Playlist({ id, notify }: { id: string; notify: (m: string) => void }) {
     const [t] = tracks.splice(from, 1);
     tracks.splice(to, 0, t!);
     edit({ op: 'move', from, to }, { ...p, tracks });
+  };
+  const addSong = (s: NewSong) => {
+    if (p.tracks.some((t) => t.videoId === s.videoId)) return notify('Already in this playlist.');
+    edit({ op: 'add', ...s }, { ...p, tracks: [...p.tracks, { ...s, addedAt: Date.now() }] });
   };
   const removeTrack = (videoId: string) => edit({ op: 'remove', videoId }, { ...p, tracks: p.tracks.filter((t) => t.videoId !== videoId) });
   const saveName = () => {
@@ -214,8 +219,14 @@ function Playlist({ id, notify }: { id: string; notify: (m: string) => void }) {
         )}
       </section>
 
+      {p.owned && (
+        <div className="border-b border-line px-4 py-4 sm:px-6">
+          <SongAdder onAdd={addSong} have={new Set(p.tracks.map((t) => t.videoId))} />
+        </div>
+      )}
+
       {p.tracks.length === 0 ? (
-        <Notice title="no songs yet">{p.owned ? 'Add songs from any room with “+ playlist”, or from your activity.' : 'Nothing in here yet.'}</Notice>
+        <Notice title="no songs yet">{p.owned ? 'Search or paste a link above, or use “+ playlist” in any room.' : 'Nothing in here yet.'}</Notice>
       ) : (
         <ol className="divide-y divide-line">
           {p.tracks.map((t, i) => (

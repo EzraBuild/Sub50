@@ -1,11 +1,11 @@
 'use client';
 
 import { Show, SignInButton, UserButton, useAuth, useUser } from '@clerk/nextjs';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { activeVisits } from '../hooks/useListeningTracker';
 import { moveGuestHistory, movedMessage } from '../lib/migrateHistory';
 import { authEnabled } from '../lib/auth-config';
-import { HistoryIcon } from './icons';
+import { HistoryIcon, LockIcon } from './icons';
 import { useActivityOpener } from './activity/ActivityOpener';
 
 /** The account's display name, or null while loading / signed out. */
@@ -41,10 +41,26 @@ export function AccountButton() {
   );
 }
 
-/** Clerk's account menu, plus a way to your activity page. */
+// Whether you're the owner (asked once per page: GET /api/access answers 200 only for owners).
+let ownerCheck: Promise<boolean> | null = null;
+function useIsOwner(): boolean {
+  const [owner, setOwner] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    ownerCheck ??= fetch('/api/access', { cache: 'no-store' }).then((r) => r.ok, () => false);
+    void ownerCheck.then((ok) => alive && setOwner(ok));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return owner;
+}
+
+/** Clerk's account menu, plus a way to your activity page (and, for the owner, access). */
 function AccountMenu() {
   // In a room, open it over the room so the music keeps playing.
   const open = useActivityOpener();
+  const owner = useIsOwner();
   return (
     <UserButton>
       <UserButton.MenuItems>
@@ -53,6 +69,7 @@ function AccountMenu() {
         ) : (
           <UserButton.Link label="Your activity" labelIcon={<HistoryIcon size={16} />} href="/me" />
         )}
+        {owner && <UserButton.Link label="Access" labelIcon={<LockIcon size={16} />} href="/access" />}
       </UserButton.MenuItems>
     </UserButton>
   );

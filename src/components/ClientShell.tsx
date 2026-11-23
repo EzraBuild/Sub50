@@ -16,6 +16,6 @@ const Sub50App = dynamic(() => import('./Sub50App'), {
   ),
 });
 
-export function ClientShell({ roomId }: { roomId: string }) {
-  return <Sub50App roomId={roomId} />;
+export function ClientShell({ roomId, searchEnabled }: { roomId: string; searchEnabled: boolean }) {
+  return <Sub50App roomId={roomId} searchEnabled={searchEnabled} />;
 }
